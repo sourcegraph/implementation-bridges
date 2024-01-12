@@ -1,0 +1,19 @@
+version: '2.4'
+
+services:
+
+  repo-conversion-bridge:
+    container_name: repo-conversion-bridge
+    image: repo-conversion-bridge
+    volumes:
+      - ./config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
+      - ../repos-to-serve/:/repos-to-serve
+    restart: always
+    networks:
+      - sourcegraph
+    environment:
+      - BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES=1
+      - LOG_LEVEL=debug
+
+networks:
+  sourcegraph:

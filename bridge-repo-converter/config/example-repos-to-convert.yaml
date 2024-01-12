@@ -1,0 +1,25 @@
+arbitrary_friendly_name_svn_1:
+  type:     SVN
+  url:      https://svn1.example.com
+  username: super_secret_username
+  password: super_secret_password
+  repos:
+  - repo1
+  - repo2
+arbitrary_friendly_name_svn_2:
+  type:     svn
+  url:      https://svn2.example.com
+  token:    super_secret_access_token
+  repo:     repo1
+arbitrary_friendly_name_tfvc_1:
+  type:     TFVC
+  url:      https://dev.azure.com/org1
+  token:    super_secret_access_token
+  repos:
+  - $/project1
+  - $/project1/project2
+arbitrary_friendly_name_tfvc_2:
+  type:     tfs
+  url:      https://dev.azure.com/org1
+  token:    super_secret_access_token
+  repo:     $/project1/project2

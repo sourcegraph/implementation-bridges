@@ -1,0 +1,27 @@
+Apache Ant:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/ant/core
+  username: username
+  password: password
+  code-host-name: svn.apache.org
+  git-org-name: apache
+  git-repo-name: ant
+  git-default-branch: main
+  authors-file-path: authors-file-path.txt
+  git-ignore-file-path: gitignore
+  layout: standard
+  trunk: trunk
+  tags: tags
+  branches:
+  - branches
+TFVC Test Repo:
+  type: TFVC
+  tfvc-collection: https://dev.azure.com/marc-leblanc/
+  code-host-name: dev.azure.com
+  git-org-name: marc-leblanc
+  git-repo-name: tfvc-project-1
+  authors-file-path: authors-file-path.txt
+  git-ignore-file-path: gitignore
+  branches:
+  - $/tfvc-project-1/
+
