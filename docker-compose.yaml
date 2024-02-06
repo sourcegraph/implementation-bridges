@@ -1,5 +1,7 @@
 version: '2.4'
+
 services:
+
   cloud-agent:
     container_name: cloud-agent
     image: index.docker.io/sourcegraph/src-tunnel-agent:2024-02-05-22-28-333320ee
@@ -10,8 +12,9 @@ services:
     restart: always
     networks:
       - sourcegraph
+
   src-serve-git:
-    container_name: src-serve-git
+    container_name: src-serve-git.local
     image:  index.docker.io/sourcegraph/src-cli:latest
     volumes:
       - /sourcegraph/repos/:/data/repos:ro
