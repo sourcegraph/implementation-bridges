@@ -6,6 +6,7 @@ services:
     volumes:
       - /sourcegraph/ie-agent-src-serve-docker-compose/config/service-account-key.json:/service-account-key.json
       - /sourcegraph/ie-agent-src-serve-docker-compose/config/config.yaml:/config.yaml
+    command: ["-config=/config.yaml"]
     restart: always
     networks:
       - sourcegraph
