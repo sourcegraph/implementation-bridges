@@ -18,7 +18,7 @@ services:
     image:  index.docker.io/sourcegraph/src-cli:latest
     volumes:
       - /sourcegraph/repos/:/data/repos:ro
-    command: ["serve-git", "/data/repos"]
+    command: ['-v', 'serve-git', '/data/repos']
     networks:
       - sourcegraph
 
