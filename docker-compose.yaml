@@ -12,13 +12,12 @@ services:
       - sourcegraph
   src-serve-git:
     container_name: src-serve-git
-    image:  sourcegraph/src-cli:latest
+    image:  index.docker.io/sourcegraph/src-cli:latest
     volumes:
       - /sourcegraph/repos/:/data/repos:ro
     command: ["serve-git", "/data/repos"]
     networks:
       - sourcegraph
-
 
 networks:
   sourcegraph:
