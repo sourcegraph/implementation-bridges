@@ -12,7 +12,7 @@ It also allows for easier upgrades
           listeningAddress: 100.100.100.0
           name: src-serve-git-local
           ports:
-          - 3434
+          - 80
 ```
 2. Clone this repo to a customer's bridge VM
 3. Copy the config.yaml and service-account-key.json files from the Cloud Ops dashboard, and paste them in the files under the config directory
@@ -20,5 +20,5 @@ It also allows for easier upgrades
 5. docker compose up -d
 6. Add a Code Host config to the customer's instance
  - Type: src serve-git
- - URL: "http://src-serve-git:3434"
+ - URL: "http://src-serve-git:80"
 7. Profit
