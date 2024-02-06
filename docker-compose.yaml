@@ -13,7 +13,7 @@ services:
     networks:
       - sourcegraph
 
-  src-serve-git:
+  src-serve-git.local:
     container_name: src-serve-git.local
     image:  index.docker.io/sourcegraph/src-cli:latest
     volumes:
