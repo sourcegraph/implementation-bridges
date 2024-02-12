@@ -16,7 +16,7 @@ then
 fi
 
 # Start docker compose services
-if ! docker compose -f ../docker-compose.yaml up -d
+if ! docker compose -f ./docker-compose-wsl2.yaml up -d
 then
     docker_compose_exit_status=$?
     echo "docker compose up failed, exit code $docker_compose_exit_status" >> $log_file
