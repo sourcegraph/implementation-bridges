@@ -5,6 +5,8 @@ log_file="./log"
 git_exit_status=""
 docker_compose_exit_status=""
 
+echo "Starting $0 $@" >> $log_file
+
 # Git pull latest commits to main
 if ! git pull
 then
@@ -20,3 +22,6 @@ then
     echo "docker compose up failed, exit code $docker_compose_exit_status" >> $log_file
     exit $docker_compose_exit_status
 fi
+
+
+echo "Finishing $0 $@" >> $log_file
