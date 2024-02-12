@@ -6,18 +6,18 @@ services:
     container_name: cloud-agent
     image: index.docker.io/sourcegraph/src-tunnel-agent:2024-02-05-22-28-333320ee
     volumes:
-      - /sourcegraph/ie-agent-src-serve-docker-compose/config/service-account-key.json:/service-account-key.json
-      - /sourcegraph/ie-agent-src-serve-docker-compose/config/config.yaml:/config.yaml
+      - ./config/service-account-key.json:/service-account-key.json
+      - ./config/config.yaml:/config.yaml
     command: ["-config=/config.yaml"]
     restart: always
     networks:
       - sourcegraph
 
   src-serve-git:
-    container_name: src-serve-git.local
+    container_name: src-serve-git-wsl.local
     image:  index.docker.io/sourcegraph/src-cli:latest
     volumes:
-      - /sourcegraph/repos/:/data/repos:ro
+      - ./repos/:/data/repos:ro
     command: "serve-git -addr :80 /data/repos"
     networks:
       - sourcegraph
