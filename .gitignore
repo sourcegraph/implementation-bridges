@@ -1,6 +1,7 @@
 # Sourcegraph
 config/service-account-key.json
 config/config.yaml
+docker-template/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -17,8 +17,8 @@ services:
     container_name: src-serve-git-ubuntu.local
     image:  index.docker.io/sourcegraph/src-cli:latest
     volumes:
-      - ./repos/:/data/repos:ro
-    command: "serve-git -addr :80 /data/repos"
+      - ../repos-to-serve/:/repos-to-serve:ro
+    command: "serve-git -addr :80 /repos-to-serve"
     networks:
       - sourcegraph
 
