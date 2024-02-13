@@ -2,6 +2,7 @@
 config/service-account-key.json
 config/config.yaml
 docker-template/
+repo-stats-svn/tmp-repo-metadata/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
