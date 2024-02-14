@@ -2,29 +2,30 @@
 # Python 3.12.1
 
 ### TODO:
-# Lock files to prevent parallel execution on the same repo
-    # function check_and_create_lock_file()
-    # {
-    #     if [ -f $LOCK_FILE ]; then
-    #         PID=$(cat $LOCK_FILE)
-    #         if ps -p $PID > /dev/null; then
-    #             echo "this script is currently running (PID: $PID)"
-    #             return 1
-    #         else
-    #             rm -f $LOCK_FILE
-    #         fi
-    #     fi
-    #     mkdir -p $(dirname $LOCK_FILE)
-    #     echo $$ > $LOCK_FILE
-    # }
-# Handle author files
-# Check for clone completion, and log it
-# Configure batch size, history start, etc.
+    # Lock files to prevent parallel execution on the same repo
+        # Lock files should already be handled by git svn
+        # function check_and_create_lock_file()
+        # {
+        #     if [ -f $LOCK_FILE ]; then
+        #         PID=$(cat $LOCK_FILE)
+        #         if ps -p $PID > /dev/null; then
+        #             echo "this script is currently running (PID: $PID)"
+        #             return 1
+        #         else
+        #             rm -f $LOCK_FILE
+        #         fi
+        #     fi
+        #     mkdir -p $(dirname $LOCK_FILE)
+        #     echo $$ > $LOCK_FILE
+        # }
+    # Handle author files
+    # Check for clone completion, and log it
+    # Configure batch size, history start, etc.
 
 ### Notes
-# See this migration guide https://www.atlassian.com/git/tutorials/migrating-convert
-    # Especially the Clean the new Git repository, to convert branches and tags
-    # git config svn.authorsfile
+    # See this migration guide https://www.atlassian.com/git/tutorials/migrating-convert
+        # Especially the Clean the new Git repository, to convert branches and tags
+        # git config svn.authorsfile
 
 
 ## Import libraries
@@ -43,6 +44,13 @@ import time                                                 # https://docs.pytho
 # Third party libraries
 import yaml                                                 # https://pyyaml.org/wiki/PyYAMLDocumentation
 
+# Global variables
+args_dict = {}
+repos_to_convert_dict = {}
+svn_repo_clone_queue_list = []
+tfvc_repo_clone_queue_list = []
+git_repo_clone_queue_list = []
+
 # Fork a process and don't wait for it to finish
 def fork_and_forget(*args):
 
@@ -59,11 +67,11 @@ def fork_and_wait(*args):
     return forked_process.exitcode
 
 
-def parse_args(args_dict):
+def parse_args():
 
     # Parse the command args
     parser = argparse.ArgumentParser(
-        description     = "Clone TFS and SVN repos, convert them to Git, then serve them via src serve-git",
+        description     = "Clone TFVC and SVN repos, convert them to Git, then serve them via src serve-git",
         usage           = str("Use " + os.path.basename(__file__) + " --help for more information"),
         formatter_class = argparse.ArgumentDefaultsHelpFormatter
     )
@@ -75,7 +83,7 @@ def parse_args(args_dict):
     parser.add_argument(
         "--repos-to-convert",
         default = "/sourcegraph/repos-to-convert.yaml",
-        help    = "/sourcegraph/repos-to-convert.yaml file path, to read a list of TFS / SVN repos and access tokens to iterate through",
+        help    = "/sourcegraph/repos-to-convert.yaml file path, to read a list of TFVC / SVN repos and access tokens to iterate through",
     )
     parser.add_argument(
         "--log-file",
@@ -112,7 +120,7 @@ def parse_args(args_dict):
         args_dict["log_level"] = "DEBUG"
 
 
-def set_logging(args_dict):
+def set_logging():
 
     script_name = os.path.basename(__file__)
 
@@ -142,23 +150,23 @@ def set_logging(args_dict):
         )
 
 
-def parse_repos_to_convert_file_into_repos_dict(args_dict, repos_dict):
+def load_repos_to_convert_file_into_dict():
 
-    # Parse the repos-to-convert.yaml file
+    # Load the repos-to-convert.yaml file
     try:
 
         # Open the file
         with open(args_dict["repos_to_convert_file"], "r") as repos_to_convert_file:
 
-            # Returns a list, not a dict
-            code_hosts_list_temp = yaml.safe_load(repos_to_convert_file)
+            # Load the YAML file into a dict
+            repos_to_convert_temp_dict = yaml.safe_load(repos_to_convert_file)
+            logging.debug(json.dumps(repos_to_convert_temp_dict))
 
-            for repo_dict_key in code_hosts_list_temp.keys():
+            # Weird thing we have to do to persist the dict in the global variable
+            for key in repos_to_convert_temp_dict:
+                repos_to_convert_dict[key] = repos_to_convert_temp_dict[key]
+            logging.debug(json.dumps(repos_to_convert_dict))
 
-                # Store the repo_dict_key in the repos_dict
-                repos_dict[repo_dict_key] = code_hosts_list_temp[repo_dict_key]
-
-            logging.info(f"Parsed {len(repos_dict)} repos from {args_dict['repos_to_convert_file']}")
 
     except FileNotFoundError:
 
@@ -171,32 +179,220 @@ def parse_repos_to_convert_file_into_repos_dict(args_dict, repos_dict):
         sys.exit(2)
 
 
-def clone_svn_repos(args_dict, repos_dict):
+def clean_form_and_validate_svn_repo(svn_repo_string, svn_repo_server_key):
 
-    # Declare an empty dict for SVN repos to extract them from the repos_dict
+    # Declare variables and set defaults
+    svn_repo_code_root = ""
+    code_host_name = ""
+    converted_git_org_name = ""
+    converted_git_repo_name = ""
+    converted_git_repo_default_branch  = "main"
+    converted_git_repo_ignore_file_path = ".gitignore"
+    username = ""
+    password = ""
+
+    # Clean + Form
+
+    # Step 3: Check if the user provided the needed config in the yaml file
+        # Work the way up the order of precedence, and stop on the first value
+
+    # Step 4: Infer any information needed but not provided
+
+    # Settings we expect to have for an SVN repo:
+        # Required from the user
+            # svn-repo-code-root
+        # Needed but can be inferred from the svn-repo-code-root
+            # code-host-name
+            # converted-git-org-name
+            # converted-git-repo-name
+        # Have defaults the user can override
+            # converted-git-repo-default-branch: main
+            # converted-git-repo-ignore-file-path: .gitignore
+        # Optional
+            # username
+            # password
+
+    # Order of precedence
+        # 1. Settings in the list item with the svn-repo-code-root
+            # This would be if type(svn_repo_server_key_repos) == dict:
+        # 2. Settings in the servers list, with the matching server key
+        # 3. Globals
+        # 4. Inferred
+        # 5. Defaults
+
+    # Start from the bottom and work our way up
+
+    # svn-repo-code-root
+    # If they give us an svn+ssh scheme, give them an error it's not supported yet, and skip it
+    if svn_repo_string.startswith("svn+ssh://"):
+        logging.error(f"svn+ssh:// scheme found in {svn_repo_string}, SVN over SSH is not supported at this time, please use https:// or http:// instead")
+        return False
+
+    # If it doesn't start with a valid scheme, then prepend http:// to it
+    svn_valid_url_schemes = [
+        "http://",
+        "https://",
+        "svn://"
+    ]
+    if not any(svn_repo_string.startswith(scheme) for scheme in svn_valid_url_schemes):
+        logging.warning(f"SVN repo {svn_repo_string} doesn't start with a URL scheme, assuming http://")
+        svn_repo_string = "http://" + svn_repo_string
+
+    svn_repo_code_root = svn_repo_string
+
+
+    # code-host-name
+    # Try to read it from servers.svn.<svn-repo-server-key>.code-host-name
+    code_host_name = repos_to_convert_dict.get("servers",{}).get("svn",{}).get(svn_repo_server_key,{}).get("code-host-name","")
+    if code_host_name:
+        # If that succeeded, great, you're done
+        logging.debug(f"Found code-host-name in servers.svn.{svn_repo_server_key}: {code_host_name}")
+    else:
+        # Otherwise, try to read it from global.svn.code-host-name
+        code_host_name = repos_to_convert_dict.get("global",{}).get("svn",{}).get("code-host-name","")
+        if code_host_name:
+            logging.debug(f"Found code-host-name in global.svn: {code_host_name}")
+        else:
+            # Otherwise, infer it from the svn-repo-code-root
+            code_host_name = svn_repo_code_root.split("//")[1].split("/")[0]
+            logging.debug(f"Inferred code-host-name from {svn_repo_code_root}: {code_host_name}")
+
+    # converted-git-org-name
+
+    # logging.debug(repos_to_convert_dict)
+    # svn_repo_servers_dict = repos_to_convert_dict.get("repos",{}).get("svn",{})
+
+    # if len(svn_repo_servers_dict) == 0:
+    #     logging.debug("No SVN repos found in repos-to-convert.yaml")
+    #     return
+    svn_repo_object = {
+        "svn-repo-code-root" : svn_repo_code_root,
+        "code-host-name" : code_host_name,
+        "converted-git-org-name" : "",
+        "converted-git-repo-name" : "",
+        "converted-git-repo-default-branch" : "main",
+        "converted-git-repo-ignore-file-path" : ".gitignore",
+        "username" : "",
+        "password" : ""
+    }
+
+    # Validate
+    if False:
+        svn_repo_object = False
+
+    return svn_repo_object
+
+def load_svn_repo_objects_into_clone_queue_list():
+
+    # Step 1: Get the list of svn-repo-code-root
+    # Get everything under the
+    # repos:
+    #   svn:
+    #     server:
+    #       repos
+
+    # For each depth to loop through
+    # Try and get the dict below the starting key
+        # Use an empty default value to avoid a fatal error
+        # Debug print it
+        # If it's empty, return or continue
+    # If it's a type string, it's only one item, not a list, so process the one and don't loop deeper
+    # If it's a type dict, then loop through the list and process each item
+
+    logging.debug(repos_to_convert_dict)
+    svn_repo_servers_dict = repos_to_convert_dict.get("repos",{}).get("svn",{})
+
+    if len(svn_repo_servers_dict) == 0:
+        logging.debug("No SVN repos found in repos-to-convert.yaml")
+        return
+
+    # We've made it this far, so repos.svn exists and isn't empty
+    # Step 2: Loop through the list
+    for svn_repo_server_key in svn_repo_servers_dict.keys():
+
+        # .keys() returns a list of strings
+        # svn_repo_server_key should be a string
+        # Don't try and use it as a dict
+        # Use it as a key to get a list or dict of repos below
+
+        # svn_repo_server_key at this point is the arbitrary name the user picked
+        # which we have to match from the repos dict to the servers dict
+        logging.debug(f"Found SVN repo server: {svn_repo_server_key}")
+
+        # Could be empty, a string, list of strings, or dict
+        svn_repo_server_key_repos = svn_repo_servers_dict[svn_repo_server_key]
+
+        # If it's empty, return
+        if len(svn_repo_server_key_repos) == 0:
+            logging.debug(f"No SVN repos found for server: {svn_repo_server_key}")
+            continue
+
+        # If it's a string, assume it's a svn-repo-code-root
+        # Make it a list, so we only have to write the code once
+        if type(svn_repo_server_key_repos) == str:
+
+            svn_repo_server_key_repos = [svn_repo_server_key_repos]
+
+        # If it's a list of strings, assume each string is a svn-repo-code-root
+        if type(svn_repo_server_key_repos) == list:
+
+            for svn_repo_string in svn_repo_server_key_repos:
+
+                svn_repo_object = clean_form_and_validate_svn_repo(svn_repo_string, svn_repo_server_key)
+
+                if svn_repo_object is not False:
+
+                    # svn_repo_code_root is finally a valid SVN repo code root
+                    logging.debug(f"Found SVN repo {svn_repo_string} under server {svn_repo_server_key}")
+
+                    # Add it to the queue
+                    svn_repo_clone_queue_list.append(svn_repo_object)
+
+                else:
+
+                    logging.warning(f"Found invalid SVN repo {svn_repo_string} under server {svn_repo_server_key}")
+
+        # If it's a dict, assume it's a list of repos with repo-level configs
+        # It might be one of these keyless list / struct / object things
+        #   - repo-url: "ssh://git@git.example.com/repo.git"
+        #     converted-git-org-name: org
+        #     converted-git-repo-name: repo-main
+        #     converted-git-default-branch: main
+        if type(svn_repo_server_key_repos) == dict:
+
+            for svn_repo in svn_repo_server_key_repos.keys():
+
+                logging.debug(f"Found SVN repo {svn_repo} under server {svn_repo_server_key_repos}")
+
+
+
+
+def clone_svn_repos():
+
+    # Declare an empty dict for SVN repos to extract them from the repos_to_convert_dict
     svn_repos_dict = {}
 
-    # Loop through the repos_dict, find the type: SVN repos, then add them to the dict of SVN repos
-    for repo_key in repos_dict.keys():
+    # Loop through the repos_to_convert_dict, find the type: SVN repos, then add them to the dict of SVN repos
+    for repo_key in repos_to_convert_dict.keys():
 
-        repo_type = repos_dict[repo_key].get('type','').lower()
+        repo_type = repos_to_convert_dict[repo_key].get('type','').lower()
 
         if repo_type == 'svn':
 
             svn_clone_command = "git svn clone "
-            svn_repo_code_root      = repos_dict[repo_key].get('svn-repo-code-root','')
-            username                = repos_dict[repo_key].get('username','')
-            password                = repos_dict[repo_key].get('password','')
-            code_host_name          = repos_dict[repo_key].get('code-host-name','')
-            git_org_name            = repos_dict[repo_key].get('git-org-name','')
-            git_repo_name           = repos_dict[repo_key].get('git-repo-name','')
-            git_default_branch      = repos_dict[repo_key].get('git-default-branch','main')
-            authors_file_path       = repos_dict[repo_key].get('authors-file-path','')
-            git_ignore_file_path    = repos_dict[repo_key].get('git-ignore-file-path','')
-            layout                  = repos_dict[repo_key].get('layout','')
-            trunk                   = repos_dict[repo_key].get('trunk','')
-            tags                    = repos_dict[repo_key].get('tags','')
-            branches                = repos_dict[repo_key].get('branches','')
+            svn_repo_code_root      = repos_to_convert_dict[repo_key].get('svn-repo-code-root','')
+            username                = repos_to_convert_dict[repo_key].get('username','')
+            password                = repos_to_convert_dict[repo_key].get('password','')
+            code_host_name          = repos_to_convert_dict[repo_key].get('code-host-name','')
+            git_org_name            = repos_to_convert_dict[repo_key].get('git-org-name','')
+            git_repo_name           = repos_to_convert_dict[repo_key].get('git-repo-name','')
+            git_default_branch      = repos_to_convert_dict[repo_key].get('git-default-branch','main')
+            authors_file_path       = repos_to_convert_dict[repo_key].get('authors-file-path','')
+            git_ignore_file_path    = repos_to_convert_dict[repo_key].get('git-ignore-file-path','')
+            layout                  = repos_to_convert_dict[repo_key].get('layout','')
+            trunk                   = repos_to_convert_dict[repo_key].get('trunk','')
+            tags                    = repos_to_convert_dict[repo_key].get('tags','')
+            branches                = repos_to_convert_dict[repo_key].get('branches','')
 
             # If lockfile exists with svn_repo_code_root and pid number
                 # If the pid from the lockfile is still running, with a command arg including git svn
@@ -272,35 +468,40 @@ def clone_svn_repos(args_dict, repos_dict):
             # Create the lockfile with the forked pid number
 
 
-def clone_tfs_repos(args_dict, repos_dict):
+def clone_tfvc_repos():
 
-    # Declare an empty dict for TFS repos to extract them from the repos_dict
-    tfs_repos_dict = {}
+    # Declare an empty dict for TFVC repos to extract them from the repos_to_convert_dict
+    tfvc_repos_dict = {}
 
-    # Loop through the repos_dict, find the type: tfs repos, then add them to the dict of TFS repos
-    for repo_key in repos_dict.keys():
+    # Loop through the repos_to_convert_dict, find the type: tfvc repos, then add them to the dict of TFVC repos
+    for repo_key in repos_to_convert_dict.keys():
 
-        repo_type = repos_dict[repo_key].get('type','').lower()
+        repo_type = repos_to_convert_dict[repo_key].get('type','').lower()
 
         if repo_type == 'tfs' or repo_type == 'tfvc':
 
-            tfs_repos_dict[repo_key] = repos_dict[repo_key]
+            tfvc_repos_dict[repo_key] = repos_to_convert_dict[repo_key]
 
 
-    logging.debug("Cloning TFS repos" + str(tfs_repos_dict))
+    logging.debug("Cloning TFVC repos" + str(tfvc_repos_dict))
+
+
+def clone_git_repos():
+    pass
 
 
 def main():
 
-    args_dict = {}
-    parse_args(args_dict)
-    set_logging(args_dict)
+    parse_args()
+    set_logging()
     logging.debug(f"{os.path.basename(__file__)} starting with args " + str(args_dict))
 
-    repos_dict = {}
-    parse_repos_to_convert_file_into_repos_dict(args_dict, repos_dict)
-    clone_svn_repos(args_dict, repos_dict)
-    clone_tfs_repos(args_dict, repos_dict)
+    load_repos_to_convert_file_into_dict()
+    load_svn_repo_objects_into_clone_queue_list()
+    clone_svn_repos()
+    clone_tfvc_repos()
+    clone_git_repos()
+
 
 if __name__ == "__main__":
     main()

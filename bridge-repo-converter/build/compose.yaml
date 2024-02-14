@@ -11,6 +11,7 @@ services:
     volumes:
       - ../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml
       - ../repos-to-serve/:/repos-to-serve
+      - ~/.ssh/:/sourcegraph/.ssh/:ro
     environment:
       - BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES=1
     networks:
