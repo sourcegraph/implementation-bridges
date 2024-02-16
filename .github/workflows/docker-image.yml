@@ -61,6 +61,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
   
-      - name: Inspect
+  inspect:
+    runs-on: ubuntu-latest
+    needs: buildx
+    steps:
+      - name: Docker Image Inspect
         run: |
           docker image inspect ghcr.io/sourcegraph/bridge-repo-converter:$GITHUB_SHA
