@@ -2,11 +2,13 @@
 # Python 3.12.1
 
 ### TODO:
-    # Author files
     # Atlassian's Java binary to tidy up branches and tags
     # Configure batch size
+    # Test layout tags and branches as lists / arrays
+    # Output status update on clone jobs
+        # Revision x of y completed, time taken, ETA for remaining revisions
     # Check for clone completion, and log it
-    # Configure history start, etc.
+    # Git check if the repo already exists
 
 ### Notes
 # See this migration guide https://www.atlassian.com/git/tutorials/migrating-convert
@@ -17,7 +19,14 @@
     # authors file
         # java -jar /sourcegraph/svn-migration-scripts.jar authors https://svn.apache.org/repos/asf/eagle > authors.txt
         # Kinda useful, surprisingly fast
-        # git config svn.authorsfile
+        # git config svn.authorsfile # https://git-scm.com/docs/git-svn#Documentation/git-svn.txt---authors-fileltfilenamegt
+        # git config svn.authorsProg # https://git-scm.com/docs/git-svn#Documentation/git-svn.txt---authors-progltfilenamegt
+
+    # git gc
+
+    # git default branch for a bare repo git symbolic-ref HEAD refs/heads/trunk
+
+    # git list all config git -C $repo_path config --list
 
     # clean-git
         # java -Dfile.encoding=utf-8 -jar /sourcegraph/svn-migration-scripts.jar clean-git
@@ -27,6 +36,8 @@
         # Corrupted repo
 
     # Find a python library for manipulating git repos
+    # https://gitpython.readthedocs.io/en/stable/tutorial.html
+        # Couple CVEs: https://nvd.nist.gov/vuln/search/results?query=gitpython
 
     # An example of doing the conversion in Python, not sure why when git svn exists
     # https://sourcegraph.com/github.com/gabrys/svn2github/-/blob/svn2github.py
@@ -64,6 +75,30 @@ def fork_and_wait(args):
     return forked_process.exitcode
 
 
+def subprocess_run(args, password=False):
+
+    # Copy args to redact passwords for logging
+    args_without_password = args.copy()
+
+    if password:
+        args_without_password[args_without_password.index(password)] = "REDACTED"
+
+    try:
+
+        logging.debug(f"Starting subprocess: {' '.join(args_without_password)}")
+        result = subprocess.run(args, check=True, capture_output=True, text=True)
+
+        if result.returncode == 0:
+            logging.debug(f"Subprocess succeeded: {' '.join(args_without_password)} with output: {result.stdout}")
+
+    except subprocess.CalledProcessError as error:
+
+        logging.error(f"Subprocess failed: {' '.join(args_without_password)} with error: {error}")
+        result = False
+
+    return result
+
+
 def parse_args(args_dict):
 
     # Parse the command args
@@ -73,8 +108,9 @@ def parse_args(args_dict):
         formatter_class = argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
-        "-d",
+        "--debug",
         action  = "store_true",
+        default = False,
         help    = "Quick flag to set --log-level DEBUG",
     )
     parser.add_argument(
@@ -90,7 +126,6 @@ def parse_args(args_dict):
     parser.add_argument(
         "--log-level",
         choices =["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        default = "INFO",
         help    = "Log level",
     )
     parser.add_argument(
@@ -100,7 +135,7 @@ def parse_args(args_dict):
         help    = "Run without logging to stdout",
     )
     parser.add_argument(
-        "--repo-path",
+        "--repo-share-path",
         default = "/repos-to-serve",
         help    = "Root of path to directory to store cloned Git repos",
     )
@@ -109,11 +144,23 @@ def parse_args(args_dict):
     # Store the parsed args in the args dictionary
     args_dict["repos_to_convert_file"]  = Path(parsed.repos_to_convert)
     args_dict["log_file"]               = Path(parsed.log_file)
-    args_dict["log_level"]              = parsed.log_level
     args_dict["quiet"]                  = parsed.quiet
-    args_dict["repo_path"]              = parsed.repo_path
+    args_dict["repo_share_path"]        = parsed.repo_share_path
 
-    if "d" in parsed:
+    # Set the log level, in order of ascending precedence
+    # Set the default, so this key isn't left empty
+    args_dict["log_level"] = "INFO"
+
+    # Override the default if defined in the OS environment variables
+    if os.environ.get('LOG_LEVEL'):
+        args_dict["log_level"] = os.environ.get('LOG_LEVEL')
+
+    # Override the default and OS environment variables if specified in --log-level arg
+    if parsed.log_level:
+        args_dict["log_level"] = parsed.log_level
+
+    # Override all if --debug provided
+    if parsed.debug:
         args_dict["log_level"] = "DEBUG"
 
 
@@ -178,9 +225,6 @@ def parse_repos_to_convert_file_into_repos_dict(args_dict, repos_dict):
 
 def clone_svn_repos(args_dict, repos_dict):
 
-    # Declare an empty dict for SVN repos to extract them from the repos_dict
-    svn_repos_dict = {}
-
     # Loop through the repos_dict, find the type: SVN repos, then add them to the dict of SVN repos
     for repo_key in repos_dict.keys():
 
@@ -188,7 +232,7 @@ def clone_svn_repos(args_dict, repos_dict):
 
         if repo_type == 'svn':
 
-            svn_clone_command = ["git","svn","clone"]
+            # Get config parameters read from repos-to-clone.yaml
             svn_repo_code_root      = repos_dict[repo_key].get('svn-repo-code-root','')
             username                = repos_dict[repo_key].get('username','')
             password                = repos_dict[repo_key].get('password','')
@@ -197,108 +241,105 @@ def clone_svn_repos(args_dict, repos_dict):
             git_repo_name           = repos_dict[repo_key].get('git-repo-name','')
             git_default_branch      = repos_dict[repo_key].get('git-default-branch','main')
             authors_file_path       = repos_dict[repo_key].get('authors-file-path','')
+            authors_prog_path       = repos_dict[repo_key].get('authors-prog-path','')
             git_ignore_file_path    = repos_dict[repo_key].get('git-ignore-file-path','')
-            layout                  = repos_dict[repo_key].get('layout','')
+            layout                  = repos_dict[repo_key].get('layout','').lower()
             trunk                   = repos_dict[repo_key].get('trunk','')
             tags                    = repos_dict[repo_key].get('tags','')
             branches                = repos_dict[repo_key].get('branches','')
 
-            # Username and password may be required fields, test them by logging in
-            if username and password:
+            ## Parse config parameters into command args
+            # TODO: Interpret code_host_name, git_org_name, and git_repo_name if not given
+            repo_path = str(args_dict["repo_share_path"]+"/"+code_host_name+"/"+git_org_name+"/"+git_repo_name)
 
-                logging.info(f"Logging in to SVN repo {repo_key} with username {username}")
-                result = subprocess.run(["svn", "info", "--non-interactive", "--username", username, "--password", password, svn_repo_code_root])
+            ## Define common command args
+            arg_svn_non_interactive = [ "--non-interactive"                 ] # Do not prompt, just fail if the command doesn't work, not supported by all commands
+            arg_svn_username        = [ "--username", username              ]
+            arg_svn_password        = [ "--password", password              ] # Only used for direct `svn` command
+            arg_svn_echo_password   = [ "echo", password, "|"               ] # Used for git svn commands
+            arg_svn_repo_code_root  = [ svn_repo_code_root                  ]
+            arg_git_cfg             = [ "git", "-C", repo_path, "config"    ]
+            arg_git_svn             = [ "git", "-C", repo_path, "svn"       ]
 
-                logging.debug(f"Result of svn info login command: {result}")
+            ## Define commands
+            cmd_svn_run_login           = [ "svn", "info" ] + arg_svn_repo_code_root + arg_svn_non_interactive
+            cmd_git_cfg_default_branch  = arg_git_cfg + [ "--global", "init.defaultBranch", git_default_branch ] # Possibility of collisions if multiple of these are run overlapping, make sure it's quick between reading and using this
+            cmd_git_run_svn_init        = arg_git_svn + [ "init"                                ] + arg_svn_repo_code_root
+            cmd_git_cfg_bare_clone      = arg_git_cfg + [ "core.bare", "true"                   ]
+            cmd_git_cfg_authors_file    = arg_git_cfg + [ "svn.authorsfile", authors_file_path  ]
+            cmd_git_cfg_authors_prog    = arg_git_cfg + [ "svn.authorsProg", authors_prog_path  ]
+            cmd_git_run_svn_fetch       = arg_git_svn + [ "fetch"                               ]
 
-                if result.returncode == 0:
-
-                    logging.info(f"Logged in successfully to SVN repo {repo_key} with username {username}")
-
-                else:
-
-                    logging.warning(f"Failed to login to SVN repo {repo_key} with username {username}, skipping this repo")
-                    continue
-
-            # If username was provided
+            ## Modify commands based on config parameters
             if username:
-                svn_clone_command.append(["--username", username])
+                cmd_git_run_svn_init   += arg_svn_username
 
-            # Need to find a way to handle the password and prevent interactive login
-            # # If password was provided
-            # if password:
-            #     svn_clone_command.append(["--password", password])
+            if password:
+                cmd_git_run_svn_init    = arg_svn_echo_password + cmd_git_run_svn_init
+                cmd_git_run_svn_fetch   = arg_svn_echo_password + cmd_git_run_svn_fetch
 
-            # If layout was specified as standard
-            if layout == "standard":
-                svn_clone_command.append(["--stdlayout"])
+            if username and password:
+                cmd_svn_run_login      += arg_svn_username + arg_svn_password
 
-            # Otherwise, specify layout
-            else:
-                if trunk:
-                    svn_clone_command += f" --trunk={trunk} "
-                if tags:
-                    svn_clone_command += f" --tags={tags} "
-                for branch in branches:
-                    svn_clone_command += f" --branches={branch} "
+            if layout:
+                cmd_git_run_svn_init   += ["--stdlayout"]
 
-            # If authors file was provided
-            if authors_file_path :
+                # Warn the user if they provided an invalid value for the layout, only standard is supported
+                if "standard" not in layout and "std" not in layout:
+                    logging.warning(f"Layout {layout} provided for repo {repo_key}, only standard is supported, continuing assuming standard")
+
+            if trunk:
+                cmd_git_run_svn_init   += ["--trunk", trunk]
+            if tags:
+                cmd_git_run_svn_init   += ["--tags", tags]
+            if branches:
+                cmd_git_run_svn_init   += ["--branches", branches]
+
+
+            ## Run commands
+            # Create the repo path if it doesn't exist
+            if not os.path.exists(repo_path):
+                os.makedirs(repo_path)
+
+            # Log in to the SVN server to test if credentials are needed / provided / valid
+            subprocess_run(cmd_svn_run_login, password)
+
+            # Set the default branch before init
+            subprocess_run(cmd_git_cfg_default_branch)
+
+            # Initialize the repo
+            subprocess_run(cmd_git_run_svn_init, password)
+
+            # Configure the bare clone
+            subprocess_run(cmd_git_cfg_bare_clone)
+
+            # Configure the authors file, if provided
+            if authors_file_path:
                 if os.path.exists(authors_file_path):
-                    svn_clone_command += f" --authors-file={authors_file_path} "
+                    subprocess_run(cmd_git_cfg_authors_file)
                 else:
                     logging.warning(f"Authors file not found at {authors_file_path}, skipping")
 
-            # Add final parameters to the clone command
-            svn_clone_command += f" {svn_repo_code_root} "
-            svn_clone_command += f" {git_repo_name} "
+            # Configure the authors program, if provided
+            if authors_prog_path:
+                if os.path.exists(authors_prog_path):
+                    subprocess_run(cmd_git_cfg_authors_prog)
+                else:
+                    logging.warning(f"Authors prog not found at {authors_prog_path}, skipping")
 
-            # Create the directories if they don't already exist
-            repo_path = str(args_dict["repo_path"]+"/"+code_host_name+"/"+git_org_name+"/"+git_repo_name)
-
-            # Check if specified path exists
-            if not os.path.exists(repo_path):
-
-                # If not, then create it
-                os.makedirs(repo_path)
-
-            # If default branch was provided, set it, otherwise set main
-            subprocess.run(["git", "config", "--global", "init.defaultBranch", git_default_branch])
-
-            #fork_and_wait(["git", "-C", repo_path, "svn", "init", svn_repo_code_root])
-            try:
-                subprocess.run(["git", "-C", repo_path, "svn", "init", svn_repo_code_root], check=True)
-            except subprocess.CalledProcessError:
-                pass
-
-            # Configure the bare clone
-            subprocess.run(["git", "config", "--file", f"{repo_path}/.git/config", "--bool", "core.bare", "true"], check=True)
-
+            # Configure the .gitignore file, if provided
             if git_ignore_file_path:
-                try:
-                    logging.info(f"Copying gitignore file from {git_ignore_file_path} to {repo_path}")
-                    #shutil.copy2(git_ignore_file_path, repo_path)
-                except FileNotFoundError:
-                    logging.warning(f"Gitignore file not found at {git_ignore_file_path}")
+                if os.path.exists(git_ignore_file_path):
+                    logging.debug(f"Copying .gitignore file from {git_ignore_file_path} to {repo_path}")
+                    shutil.copy2(git_ignore_file_path, repo_path)
+                else:
+                    logging.warning(f".gitignore file not found at {git_ignore_file_path}, skipping")
 
-            logging.info(f"Cloning SVN repo {repo_key}")
+            # Run the svn_fetch_command
+            logging.info(f"Fetch SVN repo {repo_key}")
+            subprocess_run(cmd_git_run_svn_fetch, password)
 
-            # Fork the process
-
-            result = subprocess.run(["git", "-C", repo_path, "svn", "fetch"], check=True, capture_output=True, text=True)
-            #fork_and_forget(["git", "-C", repo_path, "svn", "fetch"])
             # Create the lockfile with the forked pid number
-
-            logging.debug(f"git svn fetch: {result}")
-
-            if result.returncode == 0:
-
-                logging.info(f"git svn fetch succeeded for {repo_key}")
-
-            else:
-
-                logging.warning(f"git svn fetch failed for {repo_key}")
-
 
 def clone_tfs_repos(args_dict, repos_dict):
 

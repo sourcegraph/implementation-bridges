@@ -13,7 +13,7 @@ services:
       - ../repos-to-serve/:/repos-to-serve
     environment:
       - BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES=1
-      - LOG_LEVEL=debug
+      - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO
     networks:
       - sourcegraph
 
