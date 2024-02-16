@@ -1,4 +1,4 @@
-name: Docker Image CI
+name: Build and Push Docker Image to GitHub Container Registry
 
 on:
   push:
