@@ -2,9 +2,9 @@ version: '2.4'
 
 services:
 
-  repo-conversion-bridge:
-    container_name: repo-conversion-bridge
-    image: repo-conversion-bridge
+  bridge-repo-converter:
+    container_name: bridge-repo-converter
+    image: ghcr.io/sourcegraph/bridge-repo-converter:latest
     volumes:
       - ./config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
       - ../repos-to-serve/:/repos-to-serve

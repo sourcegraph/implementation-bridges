@@ -11,7 +11,25 @@
 ### Notes
 # See this migration guide https://www.atlassian.com/git/tutorials/migrating-convert
     # Especially the Clean the new Git repository, to convert branches and tags
-    # git config svn.authorsfile
+    # Java script repo
+    # https://marc-dev.sourcegraphcloud.com/bitbucket.org/atlassian/svn-migration-scripts/-/blob/src/main/scala/Authors.scala
+
+    # authors file
+        # java -jar /sourcegraph/svn-migration-scripts.jar authors https://svn.apache.org/repos/asf/eagle > authors.txt
+        # Kinda useful, surprisingly fast
+        # git config svn.authorsfile
+
+    # clean-git
+        # java -Dfile.encoding=utf-8 -jar /sourcegraph/svn-migration-scripts.jar clean-git
+        # Initial output looked good
+        # Required a working copy
+        # Didn't work
+        # Corrupted repo
+
+    # Find a python library for manipulating git repos
+
+    # An example of doing the conversion in Python, not sure why when git svn exists
+    # https://sourcegraph.com/github.com/gabrys/svn2github/-/blob/svn2github.py
 
 
 ## Import libraries
@@ -191,7 +209,9 @@ def clone_svn_repos(args_dict, repos_dict):
                 logging.info(f"Logging in to SVN repo {repo_key} with username {username}")
                 result = subprocess.run(["svn", "info", "--non-interactive", "--username", username, "--password", password, svn_repo_code_root])
 
-                if result == 0:
+                logging.debug(f"Result of svn info login command: {result}")
+
+                if result.returncode == 0:
 
                     logging.info(f"Logged in successfully to SVN repo {repo_key} with username {username}")
 
@@ -265,9 +285,19 @@ def clone_svn_repos(args_dict, repos_dict):
 
             # Fork the process
 
-            subprocess.run(["git", "-C", repo_path, "svn", "fetch"], check=True)
+            result = subprocess.run(["git", "-C", repo_path, "svn", "fetch"], check=True, capture_output=True, text=True)
             #fork_and_forget(["git", "-C", repo_path, "svn", "fetch"])
             # Create the lockfile with the forked pid number
+
+            logging.debug(f"git svn fetch: {result}")
+
+            if result.returncode == 0:
+
+                logging.info(f"git svn fetch succeeded for {repo_key}")
+
+            else:
+
+                logging.warning(f"git svn fetch failed for {repo_key}")
 
 
 def clone_tfs_repos(args_dict, repos_dict):

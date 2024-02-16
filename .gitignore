@@ -1,9 +1,11 @@
 # Sourcegraph
-config/service-account-key.json
+bridge-repo-converter/repos-to-serve
 config/config.yaml
+config/service-account-key.json
 docker-template/
-repo-stats-svn/tmp-repo-metadata/
 repo-stats-svn/*.csv
+repo-stats-svn/repos.txt
+repo-stats-svn/tmp-repo-metadata/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

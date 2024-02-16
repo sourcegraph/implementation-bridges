@@ -25,7 +25,7 @@ Docker compose also allows for easier upgrades, troubleshooting, monitoring, log
 2. Clone this repo to a customer's bridge VM, install Docker and Docker's Compose plugin
 3. Copy the config.yaml and service-account-key.json files from the Cloud Ops dashboard, and paste them in the files under the config directory
 4. Modify the config.yaml copied from the Cloud Ops dashboard
- - `  serviceAccountKeyFile: /service-account-key.json` so that the Go binary inside the running Docker container finds this file in the path that's mapped via the docker-compose.yaml file
+ - `serviceAccountKeyFile: /service-account-key.json` so that the Go binary inside the running Docker container finds this file in the path that's mapped via the docker-compose.yaml file
  - Only include the `- dialAddress` entries that this cloud agent can reach, remove the others, so the Cloud instance doesn't try connecting to this instance for code hosts it can't reach
  - Correct open ports from default 443 to 80
  - Careful when pasting the config.yaml into Windows, because it may add weird line endings or extra spaces, which breaks YAML, as a whitespace-dependent format
