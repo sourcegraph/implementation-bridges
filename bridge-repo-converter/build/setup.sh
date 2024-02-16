@@ -6,6 +6,9 @@ then
     BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES=60
 fi
 
+# Write environment variables to where cron will use them
+env >> /etc/environment
+
 # Ensure the script is executable
 chmod 744 /sourcegraph/run.py
 
