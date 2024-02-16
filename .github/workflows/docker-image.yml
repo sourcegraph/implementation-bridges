@@ -2,13 +2,11 @@ name: Docker Image CI
 
 on:
   push:
-    branches:
-      - "**"
-    tags:
-      - "*"
   pull_request:
-    branches:
-      - "main"
+    types:
+      - opened
+      - reopened
+      - edited
   workflow_dispatch:
 
 jobs:
@@ -35,6 +33,7 @@ jobs:
             type=raw,value=insiders,enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
             type=raw,value=insiders-$(date +%Y-%m-%d--%H-%M-%S),enable=${{ github.ref == format('refs/heads/{0}', 'master') }}
             type=sha,prefix=
+            type=sha,prefix=,format=long
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -64,4 +63,4 @@ jobs:
       
       - name: Inspect
         run: |
-          docker image inspect ghcr.io/sourcegraph/bridge-repo-converter:{{sha}}
+          docker image inspect ghcr.io/sourcegraph/bridge-repo-converter:$GITHUB_SHA
