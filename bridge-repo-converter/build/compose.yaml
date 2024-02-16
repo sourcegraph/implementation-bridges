@@ -9,7 +9,7 @@ services:
       context: .
     container_name: repo-conversion-bridge
     volumes:
-      - ../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml
+      - ../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
       - ../repos-to-serve/:/repos-to-serve
     environment:
       - BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES=1
