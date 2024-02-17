@@ -4,5 +4,11 @@ Apache Ambari:
   code-host-name: svn.apache.org
   git-org-name: asf
   git-repo-name: ambari
-  git-default-branch: main
+  layout: standard
+Apache Knox:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/knox
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: knox
   layout: standard

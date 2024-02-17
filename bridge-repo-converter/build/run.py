@@ -2,6 +2,18 @@
 # Python 3.12.1
 
 ### TODO:
+    # Parallelism
+        # Current state:
+            # The cron job won't start the script if it's currently running
+            # The script waits for each fetch job to complete before starting the next one
+        # Desired state:
+            # Cron job starts the script at every [interval]
+            # Script checks the config file to see which repos are in scope
+            # Script checks each repo if it already has fetch job running
+                # Lock file with command and pid number?
+                # If the file exists, but the command and pid number in the file don't match a running process, info that the pid finished without cleaning up the lock file, and delete the lock file
+            # If not, script starts a new fetch job
+                # Creates a lock file
     # Atlassian's Java binary to tidy up branches and tags
     # Configure batch size
     # Test layout tags and branches as lists / arrays
@@ -295,7 +307,6 @@ def clone_svn_repos(args_dict, repos_dict):
             if branches:
                 cmd_git_run_svn_init   += ["--branches", branches]
 
-
             ## Run commands
             # Create the repo path if it doesn't exist
             if not os.path.exists(repo_path):
@@ -335,11 +346,18 @@ def clone_svn_repos(args_dict, repos_dict):
                 else:
                     logging.warning(f".gitignore file not found at {git_ignore_file_path}, skipping")
 
-            # Run the svn_fetch_command
+            # Fork off the svn_fetch_command
             logging.info(f"Fetch SVN repo {repo_key}")
-            subprocess_run(cmd_git_run_svn_fetch, password)
+            git_svn_fetch(cmd_git_run_svn_fetch, password)
 
             # Create the lockfile with the forked pid number
+
+
+def git_svn_fetch(cmd_git_run_svn_fetch, password):
+
+    fetch_process = Process(target=subprocess_run, args=(cmd_git_run_svn_fetch, password))
+    fetch_process.start()
+
 
 def clone_tfs_repos(args_dict, repos_dict):
 
@@ -370,6 +388,8 @@ def main():
     parse_repos_to_convert_file_into_repos_dict(args_dict, repos_dict)
     clone_svn_repos(args_dict, repos_dict)
     # clone_tfs_repos(args_dict, repos_dict)
+
+
 
 if __name__ == "__main__":
     main()
