@@ -18,6 +18,7 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install --no-install-recommends -y \
         cron \
+        default-jre \
         git \
         git-svn \
         python3 \
