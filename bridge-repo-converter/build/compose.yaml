@@ -10,6 +10,7 @@ services:
     container_name: repo-conversion-bridge
     volumes:
       - ../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
+      - ../config/toprc:/root/.config/procps/toprc
       - ../repos-to-serve/:/repos-to-serve
     environment:
       - BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES=1

@@ -18,9 +18,11 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install --no-install-recommends -y \
         cron \
+        gcc \
         git \
         git-svn \
         python3 \
+        python3-dev \
         python3-pip \
         python3-wheel \
         subversion \
@@ -49,4 +51,4 @@ WORKDIR /sourcegraph
 COPY . .
 
 # Start the container
-CMD ["/bin/bash", "/sourcegraph/setup.sh"]
+CMD ["/usr/bin/python3", "/sourcegraph/run.py"]
