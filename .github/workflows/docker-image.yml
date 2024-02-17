@@ -28,7 +28,7 @@ jobs:
             type=ref,event=pr,priority=1900
             type=ref,event=branch,priority=1800
             type=raw,value=insiders
-            type=raw,value=insiders-$(date +%Y-%m-%d--%H-%M-%S)
+            type=raw,value=insiders-{{date 'YYYY-MM-DD-HH-mm-ss'}}
             type=sha
 
       - name: Set up Docker Buildx
