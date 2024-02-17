@@ -60,7 +60,7 @@ jobs:
       - name: Delete old untagged packages
         uses: actions/delete-package-versions@v5.0.0
         with:
-          package-name: ghcr.io/sourcegraph/bridge-repo-converter
+          package-name: sourcegraph/bridge-repo-converter
           package-type: container
           min-versions-to-keep: 5
           delete-only-untagged-versions: 'true'
