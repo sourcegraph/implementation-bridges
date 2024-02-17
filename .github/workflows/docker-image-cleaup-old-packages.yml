@@ -1,0 +1,19 @@
+name: Cleanup old Docker Images from GitHub Container Registry
+
+on:
+  workflow_dispatch: # Creates button in web UI to run the workflow manually, shouldn't be needed
+  schedule:
+    - cron: '0 0 * * *' # Run at 00:00 UTC every day
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old untagged packages
+        uses: actions/delete-package-versions@v5.0.0
+        with:
+          package-name: sourcegraph/bridge-repo-converter
+          package-type: container
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: 'true'
+          token: ${{ secrets.GITHUB_TOKEN }}
