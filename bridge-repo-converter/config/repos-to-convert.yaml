@@ -1,8 +1,121 @@
-Apache Ambari:
+allura:
   type: SVN
-  svn-repo-code-root: https://svn.apache.org/repos/asf/ambari/
+  svn-repo-code-root: https://svn.apache.org/repos/asf/allura
   code-host-name: svn.apache.org
   git-org-name: asf
-  git-repo-name: ambari
-  git-default-branch: main
+  git-repo-name: allura
+
+beam:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/beam
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: beam
+
+board:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/board
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: board
+
+bugs:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/bugs
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: bugs
+  layout:
+
+crunch:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/crunch/site
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: crunch
   layout: standard
+
+curator:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/curator/site
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: curator
+  layout: standard
+
+datafu:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/datafu/site
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: datafu
+
+eagle:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/eagle
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: eagle
+
+falcon:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/falcon
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: falcon
+
+fundraising:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/fundraising
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: fundraising
+
+johnzon:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/johnzon
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: johnzon
+
+lens:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/lens
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: lens
+
+parquet:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/parquet/site
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: parquet
+
+reef:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/reef/site
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: reef
+
+twill:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/twill
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: twill
+
+usergrid:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/usergrid/site
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: usergrid
+
+zest:
+  type: SVN
+  svn-repo-code-root: https://svn.apache.org/repos/asf/zest/site
+  code-host-name: svn.apache.org
+  git-org-name: asf
+  git-repo-name: zest

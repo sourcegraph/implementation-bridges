@@ -15,16 +15,19 @@ ENV PYTHONUNBUFFERED=1
 
 # Install python
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install --no-install-recommends -y \
-        systemctl \
+        cron \
+        gcc \
         git \
         git-svn \
-        subversion \
-        cron \
-        vim \
         python3 \
+        python3-dev \
         python3-pip \
-        python3-wheel && \
+        python3-wheel \
+        subversion \
+        systemctl \
+        vim && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* && \
     systemctl enable cron && \
@@ -48,4 +51,4 @@ WORKDIR /sourcegraph
 COPY . .
 
 # Start the container
-CMD ["/bin/bash", "/sourcegraph/setup.sh"]
+CMD ["/usr/bin/python3", "/sourcegraph/run.py"]
