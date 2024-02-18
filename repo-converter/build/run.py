@@ -76,6 +76,7 @@ import subprocess                                           # https://docs.pytho
 import sys                                                  # https://docs.python.org/3/library/sys.html
 import time                                                 # https://docs.python.org/3/library/time.html
 # Third party libraries
+# psutil requires adding gcc to the Docker image build, which adds about 4 minutes to the build time
 import psutil                                               # https://pypi.org/project/psutil/
 import yaml                                                 # https://pyyaml.org/wiki/PyYAMLDocumentation
 
