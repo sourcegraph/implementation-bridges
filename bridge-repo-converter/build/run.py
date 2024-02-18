@@ -210,9 +210,9 @@ def parse_repos_to_convert_file_into_repos_dict():
         logging.error(f"repos-to-convert.yaml file not found at {args_dict['repos_to_convert_file']}")
         sys.exit(1)
 
-    except AttributeError:
+    except (AttributeError, yaml.scanner.ScannerError) as e:
 
-        logging.error(f"Invalid YAML file format in {args_dict['repos_to_convert_file']}, please check the structure matches the format in the README.md")
+        logging.error(f"Invalid YAML file format in {args_dict['repos_to_convert_file']}, please check the structure matches the format in the README.md. {type(e)}, {e.args}, {e}")
         sys.exit(2)
 
 
@@ -236,7 +236,7 @@ def clone_svn_repos():
         authors_file_path       = repos_dict[repo_key].get('authors-file-path','')
         authors_prog_path       = repos_dict[repo_key].get('authors-prog-path','')
         git_ignore_file_path    = repos_dict[repo_key].get('git-ignore-file-path','')
-        layout                  = repos_dict[repo_key].get('layout','').lower()
+        layout                  = repos_dict[repo_key].get('layout','')
         trunk                   = repos_dict[repo_key].get('trunk','')
         tags                    = repos_dict[repo_key].get('tags','')
         branches                = repos_dict[repo_key].get('branches','')
@@ -382,26 +382,26 @@ def clone_svn_repos():
                 else:
                     logging.warning(f".gitignore file not found at {git_ignore_file_path}, skipping")
 
-        # try:
+        try:
 
-        # Check if any running process has the git svn fetch command in it
-        running_processes = {}
-        for process in psutil.process_iter():
+            # Check if any running process has the git svn fetch command in it
+            running_processes = {}
+            for process in psutil.process_iter():
 
-            process_command = ' '.join(process.cmdline())
-            running_processes[process_command] = process.pid
+                process_command = ' '.join(process.cmdline())
+                running_processes[process_command] = process.pid
 
-        # If yes, continue
-        # It'd be much easier to run this check directly in the above loop, but then the continue would just break out of the inner loop, and not skip the repo
-        if cmd_git_run_svn_fetch_without_password in running_processes.keys():
-            pid = running_processes[cmd_git_run_svn_fetch_without_password]
-            process = psutil.Process(pid)
-            process_command = ' '.join(process.cmdline())
-            logging.debug(f"Found pid {pid} running, skipping git svn fetch. Process: {process}, Command: {process_command}")
-            continue
+            # If yes, continue
+            # It'd be much easier to run this check directly in the above loop, but then the continue would just break out of the inner loop, and not skip the repo
+            if cmd_git_run_svn_fetch_without_password in running_processes.keys():
+                pid = running_processes[cmd_git_run_svn_fetch_without_password]
+                process = psutil.Process(pid)
+                process_command = ' '.join(process.cmdline())
+                logging.debug(f"Found pid {pid} running, skipping git svn fetch. Process: {process}, Command: {process_command}")
+                continue
 
-        # except Exception as e:
-        #     logging.warning(f"Failed to check if {cmd_git_run_svn_fetch_without_password} is already running, will try to start it. Exception: {e}")
+        except Exception as e:
+            logging.warning(f"Failed to check if {cmd_git_run_svn_fetch_without_password} is already running, will try to start it. Exception: {e}")
 
         # Start a fetch
         logging.info(f"Fetching SVN repo {repo_key} with {cmd_git_run_svn_fetch_without_password}")
