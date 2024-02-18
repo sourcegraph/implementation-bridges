@@ -12,8 +12,8 @@ services:
     networks:
       - sourcegraph
     environment:
-      - BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES=1
-      - LOG_LEVEL=debug
+      - BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS=3600
+      - LOG_LEVEL=INFO # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO
 
 networks:
   sourcegraph:

@@ -84,7 +84,7 @@ import yaml                                                 # https://pyyaml.org
 script_name = os.path.basename(__file__)
 args_dict = {}
 repos_dict = {}
-subprocess_dict = {}
+
 
 def parse_args():
 
@@ -110,18 +110,16 @@ def parse_args():
     )
     parser.add_argument(
         "--log-file",
-        default = f"./{script_name}.log",
         help    = "Log file path",
     )
     parser.add_argument(
         "--log-level",
-        choices =["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        choices = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help    = "Log level",
     )
     parser.add_argument(
         "--quiet", "-q",
         action  = "store_true",
-        default = False,
         help    = "Run without logging to stdout",
     )
     parser.add_argument(
@@ -133,9 +131,13 @@ def parse_args():
 
     # Store the parsed args in the args dictionary
     args_dict["repos_to_convert_file"]  = Path(parsed.repos_to_convert)
-    args_dict["log_file"]               = Path(parsed.log_file)
-    args_dict["quiet"]                  = parsed.quiet
     args_dict["repo_share_path"]        = parsed.repo_share_path
+
+    if parsed.quiet:
+        args_dict["quiet"] = parsed.quiet
+
+    if parsed.log_file:
+        args_dict["log_file"] = Path(parsed.log_file)
 
     # Set the log level, in order of ascending precedence
     # Set the default, so this key isn't left empty
@@ -157,14 +159,20 @@ def parse_args():
 def set_logging():
 
     logging_handlers = []
+    invalid_log_args = False
 
-    # If the user provided the --quiet arg, then log to file
-    if args_dict["quiet"]:
+    # If the user provided a --log-file arg, then write to the file
+    if "log_file" in args_dict.keys():
         logging_handlers.append(logging.FileHandler(args_dict["log_file"]))
 
-    # Else, log to stdout, such as running in a Docker container, so log events get written to container logs
-    else:
+    # If the user provided the --quiet arg, then don't write to stdout
+    if "quiet" not in args_dict.keys():
         logging_handlers.append(logging.StreamHandler(sys.stdout))
+
+    if len(logging_handlers) == 0:
+        invalid_log_args = True
+        logging_handlers.append(logging.StreamHandler(sys.stdout))
+
 
     logging.basicConfig(
         handlers    = logging_handlers,
@@ -173,6 +181,10 @@ def set_logging():
         format      = f"%(asctime)s; {script_name}; %(levelname)s; %(message)s",
         level       = args_dict["log_level"]
     )
+
+    if invalid_log_args:
+        logging.critical(f"If --quiet is used to not print logs to stdout, then --log-file must be used to specify a log file. Invalid args: {args_dict}")
+        sys.exit(1)
 
 
 def parse_repos_to_convert_file_into_repos_dict():
@@ -301,6 +313,9 @@ def clone_svn_repos():
         cmd_git_cfg_authors_prog    = arg_git_cfg + [ "svn.authorsProg", authors_prog_path  ]
         cmd_git_run_svn_fetch       = arg_git_svn + [ "fetch"                               ]
 
+        # Used to check if this command is already running in another process, without the password
+        cmd_git_run_svn_fetch_without_password = ' '.join(cmd_git_run_svn_fetch)
+
         ## Modify commands based on config parameters
         if username:
             cmd_git_run_svn_init   += arg_svn_username
@@ -367,64 +382,30 @@ def clone_svn_repos():
                 else:
                     logging.warning(f".gitignore file not found at {git_ignore_file_path}, skipping")
 
-        # If this repo_key already has a pid in the subprocess_dict, check if it's still running
-        if repo_key in subprocess_dict:
+        # try:
 
-            # Get the pid from the dict
-            repo_key_pid = subprocess_dict.get(repo_key)
+        # Check if any running process has the git svn fetch command in it
+        running_processes = {}
+        for process in psutil.process_iter():
 
-            try:
+            process_command = ' '.join(process.cmdline())
+            running_processes[process_command] = process.pid
 
-                logging.debug(f"Found pid {repo_key_pid} for repo {repo_key} in subprocess_dict, checking if it's still running")
+        # If yes, continue
+        # It'd be much easier to run this check directly in the above loop, but then the continue would just break out of the inner loop, and not skip the repo
+        if cmd_git_run_svn_fetch_without_password in running_processes.keys():
+            pid = running_processes[cmd_git_run_svn_fetch_without_password]
+            process = psutil.Process(pid)
+            process_command = ' '.join(process.cmdline())
+            logging.debug(f"Found pid {pid} running, skipping git svn fetch. Process: {process}, Command: {process_command}")
+            continue
 
-                # Check if the PID is still running
-                # This is still just based on PID numbers, which get reused by the OS, so this could be a different proc on the same number
-                if psutil.pid_exists(repo_key_pid):
-
-                    logging.debug(f"pid {repo_key_pid} for repo {repo_key} still exists")
-
-                    process_commands = []
-
-                    psutil_process = psutil.Process(repo_key_pid)
-
-                    process_commands.append(' '.join(psutil_process.cmdline()))
-
-                    # Get the process' children's commands
-                    child_process_list = psutil_process.children(recursive=True)
-
-                    for child_process in child_process_list:
-                        process_commands.append(' '.join(child_process.cmdline()))
-
-                    logging.debug(f"pid {repo_key_pid} for repo {repo_key} process tree commands: {process_commands}")
-
-                    # Check if it's the correct process tree, by checking for the git svn fetch command in any of the process' commands
-                    if f"git -C {repo_path} svn fetch" in process_commands:
-
-                        logging.debug(f"git svn fetch is already running for {repo_key}, not starting a new one")
-
-                        # Skip this repo, and continue with the next repo in the repos-to-convert.yaml file
-                        continue
-
-            except psutil.ZombieProcess as zombie_exception:
-
-                logging.debug(f"pid {repo_key_pid} for repo {repo_key} has a zombie in its tree: {zombie_exception}, killing it and removing it from the subprocess_dict")
-                psutil.Process(zombie_exception.pid).terminate()
-
-            except psutil.NoSuchProcess:
-
-                logging.debug(f"pid {repo_key_pid} for repo {repo_key} has terminated, removing it from the subprocess_dict")
-
-            # If a fetch is not already running, pop this PID out of the dict and start a new fetch
-            subprocess_dict.pop(repo_key)
+        # except Exception as e:
+        #     logging.warning(f"Failed to check if {cmd_git_run_svn_fetch_without_password} is already running, will try to start it. Exception: {e}")
 
         # Start a fetch
-        logging.info(f"Fetching SVN repo {repo_key}")
-        git_svn_fetch_pid = git_svn_fetch(cmd_git_run_svn_fetch, password)
-
-        # Record the pid in the subprocess dictionary for checking on the next run of the loop
-        subprocess_dict[repo_key] = git_svn_fetch_pid
-
-        logging.debug(f"Processes in the subprocess_dict: {subprocess_dict}")
+        logging.info(f"Fetching SVN repo {repo_key} with {cmd_git_run_svn_fetch_without_password}")
+        git_svn_fetch(cmd_git_run_svn_fetch, password)
 
 
 def git_svn_fetch(cmd_git_run_svn_fetch, password):
@@ -477,6 +458,7 @@ def clone_tfs_repos():
 
     logging.debug("Cloning TFS repos" + str(tfs_repos_dict))
 
+
 def cleanup_zombie_processes():
 
     logging.debug("Checking for zombie processes")
@@ -488,17 +470,15 @@ def cleanup_zombie_processes():
             if psutil.Process(pid).status() == psutil.STATUS_ZOMBIE:
                 logging.debug(f"Found zombie process {pid}, trying to flush it from the proc table")
                 psutil.Process(pid).wait(0)
-        except psutil.ZombieProcess:
-            pass
-        except psutil.TimeoutExpired:
-            pass
-        except ChildProcessError:
-            pass
+
+        except Exception as e:
+            logging.debug(f"Failed while checking for zombie processes, exception: {type(e)}, {e.args}, {e}")
+
 
 def main():
 
     # Run every 60 minutes by default
-    run_interval_minutes = os.environ.get('BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES', 60)
+    run_interval_seconds = os.environ.get('BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS', 3600)
     run_number = 0
 
     while True:
@@ -515,12 +495,11 @@ def main():
         # clone_tfs_repos()
 
         logging.debug(f"Finishing {script_name} run {run_number} with args: " + str(args_dict))
-        logging.debug(f"Sleeping for BRIDGE_REPO_CONVERTER_INTERVAL_MINUTES={run_interval_minutes} minutes")
+        logging.debug(f"Sleeping for BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS={run_interval_seconds} seconds")
         run_number += 1
 
         # Sleep the configured interval
-        # Sleep takes seconds as a parameter
-        time.sleep(int(run_interval_minutes) * 60)
+        time.sleep(int(run_interval_seconds))
 
 
 if __name__ == "__main__":
