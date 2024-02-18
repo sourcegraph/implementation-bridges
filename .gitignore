@@ -3,6 +3,7 @@ config/cloud-agent-config.yaml
 config/cloud-agent-service-account-key.json
 config/config.yaml
 config/service-account-key.json
+config/repos-to-convert.yaml
 src-serve-root
 svn-repo-stats/*.csv
 svn-repo-stats/repos.txt
