@@ -76,7 +76,8 @@ import subprocess                                           # https://docs.pytho
 import sys                                                  # https://docs.python.org/3/library/sys.html
 import time                                                 # https://docs.python.org/3/library/time.html
 # Third party libraries
-# psutil requires adding gcc to the Docker image build, which adds about 4 minutes to the build time
+# psutil requires adding gcc to the Docker image build, which adds about 4 minutes to the build time, and doubled the size of the image
+# If there's a way to remove it, that may be handy
 import psutil                                               # https://pypi.org/project/psutil/
 import yaml                                                 # https://pyyaml.org/wiki/PyYAMLDocumentation
 
@@ -482,11 +483,14 @@ def main():
     run_interval_seconds = os.environ.get('BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS', 3600)
     run_number = 0
 
+    parse_args()
+    set_logging()
+
+    cmd_git_cfg_safe_directory = "git config --system --add safe.directory '*'"
+    subprocess_run(cmd_git_cfg_safe_directory)
+
     while True:
 
-
-        parse_args()
-        set_logging()
         logging.debug(f"Starting {script_name} run {run_number} with args: " + str(args_dict))
 
         cleanup_zombie_processes()

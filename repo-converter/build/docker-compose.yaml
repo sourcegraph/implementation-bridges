@@ -4,6 +4,7 @@ services:
 
   repo-converter:
     container_name: repo-converter
+    image: implementation-bridge-repo-converter:build
     build:
       context: .
     volumes:
