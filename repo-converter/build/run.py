@@ -191,6 +191,9 @@ def set_logging():
 
 def parse_repos_to_convert_file_into_repos_dict():
 
+    # Clear the dict for this execution to remove repos which have been removed from the yaml file
+    repos_dict.clear()
+
     # Parse the repos-to-convert.yaml file
     try:
 
@@ -214,7 +217,7 @@ def parse_repos_to_convert_file_into_repos_dict():
 
     except (AttributeError, yaml.scanner.ScannerError) as e:
 
-        logging.error(f"Invalid YAML file format in {args_dict['repos_to_convert_file']}, please check the structure matches the format in the README.md. {type(e)}, {e.args}, {e}")
+        logging.error(f"Invalid YAML file format in {args_dict['repos_to_convert_file']}, please check the structure matches the format in the README.md. Exception: {type(e)}, {e.args}, {e}")
         sys.exit(2)
 
 
@@ -386,24 +389,19 @@ def clone_svn_repos():
 
         try:
 
-            # Check if any running process has the git svn fetch command in it
-            running_processes = {}
-            for process in psutil.process_iter():
+            cmd_ps = ["ps", "-e", "--format", "%a"]
 
-                process_command = ' '.join(process.cmdline())
-                running_processes[process_command] = process.pid
+            completed_cmd_ps = subprocess.run(cmd_ps, check=True, capture_output=True, text=True)
 
-            # If yes, continue
-            # It'd be much easier to run this check directly in the above loop, but then the continue would just break out of the inner loop, and not skip the repo
-            if cmd_git_run_svn_fetch_without_password in running_processes.keys():
-                pid = running_processes[cmd_git_run_svn_fetch_without_password]
-                process = psutil.Process(pid)
-                process_command = ' '.join(process.cmdline())
-                logging.debug(f"Found pid {pid} running, skipping git svn fetch. Process: {process}, Command: {process_command}")
+            completed_cmd_ps_output = completed_cmd_ps.stdout.splitlines()
+
+            if cmd_git_run_svn_fetch_without_password in completed_cmd_ps_output:
+
+                logging.info(f"Found running process for {repo_key}, skipping")
                 continue
 
         except Exception as e:
-            logging.warning(f"Failed to check if {cmd_git_run_svn_fetch_without_password} is already running, will try to start it. Exception: {e}")
+            logging.warning(f"Failed to check if {cmd_git_run_svn_fetch_without_password} is already running, will try to start it. Exception: {type(e)}, {e.args}, {e}")
 
         # Start a fetch
         logging.info(f"Fetching SVN repo {repo_key} with {cmd_git_run_svn_fetch_without_password}")
@@ -412,10 +410,9 @@ def clone_svn_repos():
 
 def git_svn_fetch(cmd_git_run_svn_fetch, password):
 
-    fetch_process = Process(target=subprocess_run, args=(cmd_git_run_svn_fetch, password))
-    fetch_process.start()
-
-    return fetch_process.pid
+    multiprocessing_process = Process(target=subprocess_run, args=(cmd_git_run_svn_fetch, password))
+    multiprocessing_process.start()
+    multiprocessing_process.is_alive()
 
 
 def subprocess_run(args, password=False):
@@ -474,7 +471,7 @@ def cleanup_zombie_processes():
                 psutil.Process(pid).wait(0)
 
         except Exception as e:
-            logging.debug(f"Failed while checking for zombie processes, exception: {type(e)}, {e.args}, {e}")
+            logging.debug(f"Failed while checking for zombie processes, Exception: {type(e)}, {e.args}, {e}")
 
 
 def main():
@@ -486,7 +483,7 @@ def main():
     parse_args()
     set_logging()
 
-    cmd_git_cfg_safe_directory = "git config --system --add safe.directory '*'"
+    cmd_git_cfg_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "'*'"]
     subprocess_run(cmd_git_cfg_safe_directory)
 
     while True:
