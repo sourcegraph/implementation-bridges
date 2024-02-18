@@ -19,7 +19,7 @@ services:
     image:  index.docker.io/sourcegraph/src-cli:latest
     volumes:
       - ../src-serve-root/:/sourcegraph/src-serve-root:ro
-    command: "serve-git -addr :80 /sourcegraph/src-serve-root"
+    command: "serve-git -addr :443 /sourcegraph/src-serve-root"
     networks:
       - sourcegraph
 
