@@ -1,11 +1,13 @@
 # Sourcegraph
-bridge-repo-converter/repos-to-serve
+config/cloud-agent-config.yaml
+config/cloud-agent-service-account-key.json
 config/config.yaml
 config/service-account-key.json
-docker-template/
-repo-stats-svn/*.csv
-repo-stats-svn/repos.txt
-repo-stats-svn/tmp-repo-metadata/
+config/repos-to-convert.yaml
+src-serve-root
+svn-repo-stats/*.csv
+svn-repo-stats/repos.txt
+svn-repo-stats/tmp-repo-metadata/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
