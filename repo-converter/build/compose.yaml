@@ -1,0 +1,15 @@
+version: '2.4'
+
+services:
+
+  repo-converter:
+    container_name: repo-converter
+    build:
+      context: .
+    volumes:
+      - ../../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
+      - ../../config/toprc:/root/.config/procps/toprc
+      - ../../src-serve-root/:/sourcegraph/src-serve-root
+    environment:
+      - BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS=10
+      - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO
