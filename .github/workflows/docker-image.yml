@@ -22,7 +22,7 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: |
-            ghcr.io/sourcegraph/bridge-repo-converter
+            ghcr.io/sourcegraph/implementation-bridge-repo-converter
           tags: |
             type=ref,event=tag,priority=2000
             type=ref,event=pr,priority=1900
@@ -46,7 +46,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
-          context: bridge-repo-converter/build
+          context: repo-converter/build
           platforms: linux/amd64,linux/arm64
           file: bridge-repo-converter/build/Dockerfile
           push: true
