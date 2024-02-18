@@ -124,7 +124,7 @@ def parse_args():
     )
     parser.add_argument(
         "--repo-share-path",
-        default = "/src-serve-root",
+        default = "/sourcegraph/src-serve-root",
         help    = "Root of path to directory to store cloned Git repos",
     )
     parsed = parser.parse_args()
