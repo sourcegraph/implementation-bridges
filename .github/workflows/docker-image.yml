@@ -48,7 +48,7 @@ jobs:
         with:
           context: repo-converter/build
           platforms: linux/amd64,linux/arm64
-          file: bridge-repo-converter/build/Dockerfile
+          file: repo-converter/build/Dockerfile
           push: true
           sbom: true
           tags: |
