@@ -1,5 +1,10 @@
 version: '2.4'
 
+include:
+  - path:
+    - ../config/docker-compose-common-services.yaml
+    - docker-compose-override.yaml
+
 services:
 
   repo-converter:
@@ -7,7 +12,7 @@ services:
     image: ghcr.io/sourcegraph/implementation-bridge-repo-converter:insiders
     volumes:
       - ../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
-      - ../src-serve-root/:/sourcegraph/src-serve-root"
+      - ../src-serve-root/:/sourcegraph/src-serve-root
     restart: always
     environment:
       - BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS=3600

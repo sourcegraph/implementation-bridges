@@ -193,9 +193,11 @@ def parse_repos_to_convert_file_into_repos_dict():
         # Open the file
         with open(args_dict["repos_to_convert_file"], "r") as repos_to_convert_file:
 
-            # Returns a list, not a dict
+            # This should return a dict
             code_hosts_list_temp = yaml.safe_load(repos_to_convert_file)
 
+            # Weird thing we have to do
+            # Reading directory into repos_dict doesn't persist the dict outside the function
             for repo_dict_key in code_hosts_list_temp.keys():
 
                 # Store the repo_dict_key in the repos_dict
@@ -223,7 +225,7 @@ def clone_svn_repos():
         if repos_dict[repo_key].get('type','').lower() != 'svn':
             continue
 
-        # Get config parameters read from repos-to-clone.yaml
+        # Get config parameters read from repos-to-clone.yaml, and set defaults if they're not provided
         svn_repo_code_root      = repos_dict[repo_key].get('svn-repo-code-root','')
         username                = repos_dict[repo_key].get('username','')
         password                = repos_dict[repo_key].get('password','')
@@ -241,6 +243,12 @@ def clone_svn_repos():
 
         ## Parse config parameters into command args
         # TODO: Interpret code_host_name, git_org_name, and git_repo_name if not given
+            # ex. https://svn.apache.org/repos/asf/parquet/site
+            # code_host_name            = svn.apache.org    # can get by removing url scheme, if any, till the first /
+            # arbitrary path on server  = repos             # optional, can either be a directory, or may actually be the repo
+            # git_org_name              = asf
+            # git_repo_name             = parquet
+            # git repo root             = site              # arbitrary path inside the repo where contributors decided to start storing /trunk /branches /tags and other files to be included in the repo
         repo_path = str(args_dict["repo_share_path"]+"/"+code_host_name+"/"+git_org_name+"/"+git_repo_name)
 
         # States
