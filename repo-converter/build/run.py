@@ -416,6 +416,26 @@ def git_svn_fetch(cmd_git_run_svn_fetch, password):
     multiprocessing_process.is_alive()
 
 
+def redact_password_from_list(args, password=False):
+
+    args_without_password = []
+
+    if password:
+
+        for arg in args:
+
+            if password in arg:
+
+                arg = arg.replace(password, "REDACTED-PASSWORD")
+
+            args_without_password.append(arg)
+
+    else:
+        args_without_password = args.copy()
+
+    return args_without_password
+
+
 def subprocess_run(args, password=False):
 
     # Using the subprocess module
@@ -423,9 +443,7 @@ def subprocess_run(args, password=False):
     # Waits for the process to complete
 
     # Redact passwords for logging
-    args_without_password = args.copy()
-    if password:
-        args_without_password[args_without_password.index(password)] = "REDACTED-PASSWORD"
+    args_without_password = redact_password_from_list(args, password)
 
     try:
 
@@ -434,11 +452,16 @@ def subprocess_run(args, password=False):
         completed_process = subprocess.run(args, check=True, capture_output=True, text=True)
 
         if completed_process.returncode == 0:
-            logging.debug(f"Subprocess succeeded: {' '.join(args_without_password)} with output: {completed_process.stdout}")
+
+            std_out_without_password = redact_password_from_list(completed_process.stdout.splitlines(), password)
+
+            logging.debug(f"Subprocess succeeded: {' '.join(args_without_password)} with output: {std_out_without_password}")
 
     except subprocess.CalledProcessError as error:
 
-        logging.error(f"Subprocess failed: {' '.join(args_without_password)} with error: {error}, and stderr: {error.stderr}")
+        std_err_without_password = redact_password_from_list(error.stderr.splitlines(), password)
+
+        logging.error(f"Subprocess failed: {' '.join(args_without_password)} with error: {error}, and stderr: {std_err_without_password}")
 
 
 def clone_tfs_repos():
