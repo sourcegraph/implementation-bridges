@@ -305,7 +305,7 @@ def clone_svn_repos():
         arg_svn_non_interactive = [ "--non-interactive"                 ] # Do not prompt, just fail if the command doesn't work, not supported by all commands
         arg_svn_username        = [ "--username", username              ]
         arg_svn_password        = [ "--password", password              ] # Only used for direct `svn` command
-        arg_svn_echo_password   = [ "echo", password, "|"               ] # Used for git svn commands
+        arg_svn_echo_password   = [ "echo", f"\"{password}\"", "|"      ] # Used for git svn commands
         arg_svn_repo_code_root  = [ svn_repo_code_root                  ]
         arg_git_cfg             = [ "git", "-C", repo_path, "config"    ]
         arg_git_svn             = [ "git", "-C", repo_path, "svn"       ]
