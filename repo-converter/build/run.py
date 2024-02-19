@@ -238,7 +238,7 @@ def clone_svn_repos():
         password                = repos_dict[repo_key].get('password','')
         code_host_name          = repos_dict[repo_key].get('code-host-name','')
         git_org_name            = repos_dict[repo_key].get('git-org-name','')
-        git_repo_name           = repos_dict[repo_key].get('git-repo-name','')
+        git_repo_name           = repo_key
         git_default_branch      = repos_dict[repo_key].get('git-default-branch','main')
         authors_file_path       = repos_dict[repo_key].get('authors-file-path','')
         authors_prog_path       = repos_dict[repo_key].get('authors-prog-path','')
