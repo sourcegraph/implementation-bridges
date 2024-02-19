@@ -18,5 +18,5 @@ services:
       - ../../config/toprc:/root/.config/procps/toprc
       - ../../src-serve-root/:/sourcegraph/src-serve-root
     environment:
-      - BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS=10
+      - BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS=60
       - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO
