@@ -458,6 +458,8 @@ def subprocess_run(args, password=False):
 
         completed_process = subprocess.run(args, check=True, capture_output=True, text=True)
 
+        logging.debug(f"Subprocess finished: {completed_process}")
+
         if completed_process.returncode == 0:
 
             std_out_without_password = redact_password_from_list(completed_process.stdout.splitlines(), password)
