@@ -4,7 +4,7 @@ services:
 
   cloud-agent:
     container_name: cloud-agent
-    image: index.docker.io/sourcegraph/src-tunnel-agent:2024-02-05-22-28-333320ee
+    image: index.docker.io/sourcegraph/src-tunnel-agent:2024-02-15-04-02-110c2ea9
     volumes:
       - ../config/cloud-agent-service-account-key.json:/sourcegraph/cloud-agent-service-account-key.json:ro
       - ../config/cloud-agent-config.yaml:/sourcegraph/cloud-agent-config.yaml:ro
