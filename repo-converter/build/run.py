@@ -420,7 +420,7 @@ def git_svn_fetch(cmd_git_run_svn_fetch, password):
 
     multiprocessing_process = Process(target=subprocess_run, args=(cmd_git_run_svn_fetch, password))
     multiprocessing_process.start()
-    multiprocessing_process.wait()
+    multiprocessing_process.join()
 
 
 def redact_password_from_list(args, password=False):
