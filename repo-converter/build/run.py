@@ -4,17 +4,10 @@
 ### TODO:
 
     # Parallelism
-            # Check its last line of output
-            # Try calling the process to
-                # Also clears out zombie processes
-            # If not, script starts a new fetch job
-                # Creates a lock file
-                # Use the multiprocessing module to fork off a child process, but don't reuse the run_subprocess function, to avoid reference before assignment error of completed_process
-            # Poll the fetch process
-                # To see if it's completed, then log it
-                # Output status update on clone jobs
-                    # Revision x of y completed, time taken, ETA for remaining revisions
-            # Store subprocess_dict in a file?
+        # Poll the fetch process
+            # To see if it's completed, then log it
+            # Output status update on clone jobs
+                # Revision x of y completed, time taken, ETA for remaining revisions
 
     # Configure batch size, so we see repos in Sourcegraph update as the fetch jobs progress
     # May be able to use
@@ -483,7 +476,7 @@ def main():
     parse_args()
     set_logging()
 
-    cmd_git_cfg_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "'*'"]
+    cmd_git_cfg_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "\"*\""]
     subprocess_run(cmd_git_cfg_safe_directory)
 
     while True:
