@@ -65,6 +65,7 @@ import json                                                 # https://docs.pytho
 import logging                                              # https://docs.python.org/3/library/logging.html
 import os                                                   # https://docs.python.org/3/library/os.html
 import shutil                                               # https://docs.python.org/3/library/shutil.html
+import signal                                               # https://docs.python.org/3/library/signal.html
 import subprocess                                           # https://docs.python.org/3/library/subprocess.html
 import sys                                                  # https://docs.python.org/3/library/sys.html
 import time                                                 # https://docs.python.org/3/library/time.html
@@ -79,6 +80,12 @@ import yaml                                                 # https://pyyaml.org
 script_name = os.path.basename(__file__)
 args_dict = {}
 repos_dict = {}
+
+
+def signal_handler(signal, frame):
+    signal_name = signal.Signals(signal).name
+    logging.debug(f"Received signal {signal_name}: {signal} frame: {frame}")
+signal.signal(signal.SIGINT, signal_handler)
 
 
 def parse_args():
@@ -413,7 +420,7 @@ def git_svn_fetch(cmd_git_run_svn_fetch, password):
 
     multiprocessing_process = Process(target=subprocess_run, args=(cmd_git_run_svn_fetch, password))
     multiprocessing_process.start()
-    multiprocessing_process.is_alive()
+    multiprocessing_process.wait()
 
 
 def redact_password_from_list(args, password=False):
