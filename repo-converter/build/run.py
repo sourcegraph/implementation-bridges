@@ -585,13 +585,21 @@ def clone_tfs_repos():
 
 def status_update_and_cleanup_zombie_processes():
 
+    count_processes_still_running = 0
+    count_processes_finished = 0
+
     try:
 
         for process in running_processes:
 
             if process.is_alive():
+
+                count_processes_still_running += 1
                 logging.info(f"pid {process.pid} still running: {process.name}")
+
             else:
+
+                count_processes_finished += 1
                 logging.info(f"Process finished with exit code {process.exitcode}: {process.name}")
                 running_processes.remove(process)
 
@@ -599,7 +607,9 @@ def status_update_and_cleanup_zombie_processes():
 
         logging.error(f"Failed while checking for zombie processes, Exception: {type(e)}, {e.args}, {e}")
 
-    logging.debug("Cleaning up zombie processes")
+    logging.info(f"Count of repo fetch processes still running: {count_processes_still_running}")
+    logging.info(f"Count of repo fetch processes finished: {count_processes_finished}")
+    logging.info("Cleaning up zombie processes")
 
     # Returns a list of all child processes still running
     # Also joins all completed (zombie) processes to clear them
