@@ -538,18 +538,21 @@ def subprocess_run(args, password=None, echo_password=None):
         std_err_without_password = ' '.join(redact_password_from_list(error.stderr.splitlines(), password))
         logging.error(f"Subprocess failed: {args_without_password_string} with error: {error}, and stderr: {std_err_without_password}")
 
-        # Handle the case of git svn lock files blocking fetch processes
+        # Handle the case of abandoned git svn lock files blocking fetch processes
         # We already know that no other git svn fetch processes are running, because we checked for that before spawning this fetch process
         # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/wsl/zest/.git/svn/refs/remotes/git-svn/index.lock': File exists.  Another git process seems to be running in this repository, e.g. an editor opened by 'git commit'. Please make sure all processes are terminated then try again. If it still fails, a git process may have crashed in this repository earlier: remove the file manually to continue. write-tree: command returned error: 128
-        if ".git/svn/refs/remotes/git-svn/index.lock" in std_err_without_password:
+        if all("Unable to create", "index.lock", "File exists") in std_err_without_password:
 
             try:
 
-                # Get git -C file path from args
-                lock_file_path = args[args.index("-C") + 1] + "/.git/svn/refs/remotes/git-svn/index.lock"
+                # Get the index.lock file path from std_err_without_password
+                lock_file_path = std_err_without_password.split("Unable to create '")[1].split("': File exists.")[0]
 
-                logging.warning(f"git svn fetch failed to start due to finding a lockfile in repo at {lock_file_path}. Deleting the lockfile so it'll try again on the next run.")
-                subprocess_run(["rm", "-f", lock_file_path])
+                logging.warning(f"Fetch failed to start due to finding a lockfile in repo at {lock_file_path}. Deleting the lockfile so it'll try again on the next run.")
+
+                # Careful with recursive function call, don't create infinite recursion and fork bomb the container
+                if subprocess_run(["rm", "-f", lock_file_path]):
+                    logging.info(f"Successfully deleted {lock_file_path}")
 
             except subprocess.CalledProcessError as error:
                 logging.error(f"Failed to rm -f lockfile at {lock_file_path} with error: {error}")
