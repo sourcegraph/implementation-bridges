@@ -18,7 +18,6 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install --no-install-recommends -y \
         cron \
-        gcc \
         git \
         git-svn \
         python3 \
@@ -32,6 +31,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/* && \
     systemctl enable cron && \
     systemctl start cron
+
+#        gcc \
 
 # Download dependencies as a separate step to take advantage of Docker's caching
 # Leverage a cache mount to /root/.cache/pip to speed up subsequent builds
