@@ -541,7 +541,9 @@ def subprocess_run(args, password=None, echo_password=None):
         # Handle the case of abandoned git svn lock files blocking fetch processes
         # We already know that no other git svn fetch processes are running, because we checked for that before spawning this fetch process
         # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/wsl/zest/.git/svn/refs/remotes/git-svn/index.lock': File exists.  Another git process seems to be running in this repository, e.g. an editor opened by 'git commit'. Please make sure all processes are terminated then try again. If it still fails, a git process may have crashed in this repository earlier: remove the file manually to continue. write-tree: command returned error: 128
-        if all(["Unable to create", "index.lock", "File exists"]) in std_err_without_password:
+        lock_file_error_strings = ["Unable to create", "index.lock", "File exists"]
+        lock_file_error_conditions = (lock_file_error_string in std_err_without_password for lock_file_error_string in lock_file_error_strings)
+        if all(lock_file_error_conditions):
 
             try:
 
