@@ -608,7 +608,7 @@ def main():
     parse_args()
     set_logging()
 
-    cmd_git_cfg_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "'*'"]
+    cmd_git_cfg_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "*"]
     subprocess_run(cmd_git_cfg_safe_directory)
 
     logging.debug("Multiprocessing module using start method: " + multiprocessing.get_start_method())
