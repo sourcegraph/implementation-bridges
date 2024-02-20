@@ -21,7 +21,6 @@ RUN apt-get update && \
         git \
         git-svn \
         python3 \
-        python3-dev \
         python3-pip \
         python3-wheel \
         subversion \
@@ -32,6 +31,7 @@ RUN apt-get update && \
     systemctl enable cron && \
     systemctl start cron
 
+#        python3-dev \
 #        gcc \
 
 # Download dependencies as a separate step to take advantage of Docker's caching
