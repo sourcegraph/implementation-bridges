@@ -274,27 +274,27 @@ def clone_svn_repos():
         repo_path = str(args_dict["repo_share_path"]+"/"+code_host_name+"/"+git_org_name+"/"+git_repo_name)
 
         ## Define common command args
-        # arg_svn_non_interactive = [ "--non-interactive"                 ] # Do not prompt, just fail if the command doesn't work, only used for direct `svn` command
+        arg_svn_non_interactive = [ "--non-interactive"                 ] # Do not prompt, just fail if the command doesn't work, only used for direct `svn` command
         arg_svn_username        = [ "--username", username              ]
-        # arg_svn_password        = [ "--password", password              ] # Only used for direct `svn` command
-        # arg_svn_echo_password   = [ "echo", f"\"{password}\"", "|"      ] # Used for git svn commands
+        arg_svn_password        = [ "--password", password              ] # Only used for direct `svn` command
+        # arg_svn_echo_password   = [ "echo", f"\"{password}\"", "|"      ] # Used for git svn commands # Breaks getting the correct process exit code
+        arg_svn_echo_password   = None
         arg_svn_repo_code_root  = [ svn_repo_code_root                  ]
         arg_git_cfg             = [ "git", "-C", repo_path, "config"    ]
         arg_git_svn             = [ "git", "-C", repo_path, "svn"       ]
 
-
         ## Define commands
-        cmd_svn_run_info            = [ "svn", "info"           ] + arg_svn_repo_code_root # + arg_svn_non_interactive
-        cmd_svn_run_log             = [ "svn", "log", "--xml"   ] + arg_svn_repo_code_root # + arg_svn_non_interactive
-        cmd_git_cfg_default_branch  = arg_git_cfg + [ "--global", "init.defaultBranch", git_default_branch ] # Possibility of collisions if multiple of these are run overlapping, make sure it's quick between reading and using this
-        cmd_git_run_svn_init        = arg_git_svn + [ "init"                                ] + arg_svn_repo_code_root
-        cmd_git_cfg_bare_clone      = arg_git_cfg + [ "core.bare", "true"                   ]
-        cmd_git_cfg_authors_file    = arg_git_cfg + [ "svn.authorsfile", authors_file_path  ]
-        cmd_git_cfg_authors_prog    = arg_git_cfg + [ "svn.authorsProg", authors_prog_path  ]
-        cmd_git_run_svn_fetch       = arg_git_svn + [ "fetch"                               ]
+        cmd_run_svn_info            = [ "svn", "info"           ] + arg_svn_repo_code_root + arg_svn_non_interactive
+        cmd_run_svn_log             = [ "svn", "log", "--xml"   ] + arg_svn_repo_code_root + arg_svn_non_interactive
+        cmd_cfg_git_default_branch  = arg_git_cfg + [ "--global", "init.defaultBranch", git_default_branch ] # Possibility of collisions if multiple of these are run overlapping, make sure it's quick between reading and using this
+        cmd_run_git_svn_init        = arg_git_svn + [ "init"                                ] + arg_svn_repo_code_root
+        cmd_cfg_git_bare_clone      = arg_git_cfg + [ "core.bare", "true"                   ]
+        cmd_cfg_git_authors_file    = arg_git_cfg + [ "svn.authorsfile", authors_file_path  ]
+        cmd_cfg_git_authors_prog    = arg_git_cfg + [ "svn.authorsProg", authors_prog_path  ]
+        cmd_run_git_svn_fetch       = arg_git_svn + [ "fetch"                               ]
 
         # Used to check if this command is already running in another process, without the password
-        cmd_git_run_svn_fetch_without_password = ' '.join(cmd_git_run_svn_fetch)
+        cmd_run_git_svn_fetch_without_password = ' '.join(cmd_run_git_svn_fetch)
 
         # States
             # Create:
@@ -334,13 +334,13 @@ def clone_svn_repos():
 
             completed_ps_command = subprocess.run(ps_command, check=True, capture_output=True, text=True)
 
-            if cmd_git_run_svn_fetch_without_password in completed_ps_command.stdout:
+            if cmd_run_git_svn_fetch_without_password in completed_ps_command.stdout:
 
                 logging.info(f"Fetching process already running for {repo_key}")
                 continue
 
         except Exception as e:
-            logging.warning(f"Failed to check if {cmd_git_run_svn_fetch_without_password} is already running, will try to start it. Exception: {type(e)}, {e.args}, {e}")
+            logging.warning(f"Failed to check if {cmd_run_git_svn_fetch_without_password} is already running, will try to start it. Exception: {type(e)}, {e.args}, {e}")
 
 
         ## Check if we're in the Update state
@@ -378,22 +378,20 @@ def clone_svn_repos():
 
         ## Modify commands based on config parameters
         if username:
-            cmd_svn_run_info        += arg_svn_username
-            cmd_svn_run_log         += arg_svn_username
-            cmd_git_run_svn_init    += arg_svn_username
-            cmd_git_run_svn_fetch   += arg_svn_username
+            cmd_run_svn_info        += arg_svn_username
+            cmd_run_svn_log         += arg_svn_username
+            cmd_run_git_svn_init    += arg_svn_username
+            cmd_run_git_svn_fetch   += arg_svn_username
 
-        # TODO: Delete these after confirming the new approach works on the customer's instance
-        # if password:
-        #     cmd_svn_run_info
-        #     cmd_git_run_svn_init    = arg_svn_echo_password + cmd_git_run_svn_init
-        #     cmd_git_run_svn_fetch   = arg_svn_echo_password + cmd_git_run_svn_fetch
-        # if username and password:
+        if password:
+            arg_svn_echo_password   = True
+            cmd_run_svn_info        += arg_svn_password
+            cmd_run_svn_log         += arg_svn_password
 
         ## Run commands
         # Run the svn info command to test logging in to the SVN server, for network connectivity and credentials
         # Capture the output so we know the max revision in this repo's history
-        svn_info = subprocess_run(cmd_svn_run_info, password)
+        svn_info = subprocess_run(cmd_run_svn_info, password, arg_svn_echo_password)
 
         if repo_state == "create":
 
@@ -409,11 +407,11 @@ def clone_svn_repos():
             #         last_changed_rev = int(svn_info.split("Last Changed Rev: ")[1].split(" ")[0])
             #         logging.debug(f"Last Changed Rev for {repo_key}: {last_changed_rev}")
 
-            #         cmd_svn_run_log += ["--revision", "BASE:"+str(last_changed_rev)]
+            #         cmd_run_svn_log += ["--revision", "BASE:"+str(last_changed_rev)]
 
             #     # Get the number of revisions in this repo's history, to know how many batches to fetch in the initial clone
             #     # Note this could be a slow process
-            #     svn_log = subprocess_run(cmd_svn_run_log, password)
+            #     svn_log = subprocess_run(cmd_run_svn_log, password)
 
             #     repo_rev_count = int(svn_info.split("Revision: ")[1].split(" ")[0])
 
@@ -424,7 +422,7 @@ def clone_svn_repos():
 
             #     # TODO: Find a way to set batch size for initial fetch vs update fetches
             #     if fetch_batch_size and not fetch_batch_size == "HEAD":
-            #         cmd_git_run_svn_fetch += ["--revision", fetch_batch_size]
+            #         cmd_run_git_svn_fetch += ["--revision", fetch_batch_size]
 
 
             # Create the repo path if it doesn't exist
@@ -432,27 +430,27 @@ def clone_svn_repos():
                 os.makedirs(repo_path)
 
             # Set the default branch before init
-            subprocess_run(cmd_git_cfg_default_branch)
+            subprocess_run(cmd_cfg_git_default_branch)
 
             if layout:
-                cmd_git_run_svn_init   += ["--stdlayout"]
+                cmd_run_git_svn_init   += ["--stdlayout"]
 
                 # Warn the user if they provided an invalid value for the layout, only standard is supported
                 if "standard" not in layout and "std" not in layout:
                     logging.warning(f"Layout {layout} provided for repo {repo_key}, only standard is supported, continuing assuming standard")
 
             if trunk:
-                cmd_git_run_svn_init   += ["--trunk", trunk]
+                cmd_run_git_svn_init   += ["--trunk", trunk]
             if tags:
-                cmd_git_run_svn_init   += ["--tags", tags]
+                cmd_run_git_svn_init   += ["--tags", tags]
             if branches:
-                cmd_git_run_svn_init   += ["--branches", branches]
+                cmd_run_git_svn_init   += ["--branches", branches]
 
             # Initialize the repo
-            subprocess_run(cmd_git_run_svn_init, password)
+            subprocess_run(cmd_run_git_svn_init, password)
 
             # Configure the bare clone
-            subprocess_run(cmd_git_cfg_bare_clone)
+            subprocess_run(cmd_cfg_git_bare_clone)
 
 
 
@@ -461,14 +459,14 @@ def clone_svn_repos():
         # Configure the authors file, if provided
         if authors_file_path:
             if os.path.exists(authors_file_path):
-                subprocess_run(cmd_git_cfg_authors_file)
+                subprocess_run(cmd_cfg_git_authors_file)
             else:
                 logging.warning(f"Authors file not found at {authors_file_path}, skipping")
 
         # Configure the authors program, if provided
         if authors_prog_path:
             if os.path.exists(authors_prog_path):
-                subprocess_run(cmd_git_cfg_authors_prog)
+                subprocess_run(cmd_cfg_git_authors_prog)
             else:
                 logging.warning(f"Authors prog not found at {authors_prog_path}, skipping")
 
@@ -481,9 +479,9 @@ def clone_svn_repos():
                 logging.warning(f".gitignore file not found at {git_ignore_file_path}, skipping")
 
         # Start a fetch
-        logging.info(f"Fetching SVN repo {repo_key} with {cmd_git_run_svn_fetch_without_password}")
+        logging.info(f"Fetching SVN repo {repo_key} with {cmd_run_git_svn_fetch_without_password}")
 
-        process = multiprocessing.Process(target=subprocess_run, name="git svn fetch "+git_repo_name, args=(cmd_git_run_svn_fetch, password))
+        process = multiprocessing.Process(target=subprocess_run, name="git svn fetch "+git_repo_name, args=(cmd_run_git_svn_fetch, password, arg_svn_echo_password))
         process.start()
         # process.join() # join prevents zombies, but it also blocks parallel processing
         running_processes.append(process)
@@ -509,7 +507,7 @@ def redact_password_from_list(args, password=None):
     return args_without_password
 
 
-def subprocess_run(args, password=None):
+def subprocess_run(args, password=None, echo_password=None):
 
     # Using the subprocess module
     # https://docs.python.org/3/library/subprocess.html#module-subprocess
@@ -526,7 +524,10 @@ def subprocess_run(args, password=None):
 
         # If password is provided to this function, feed it into the subprocess' stdin pipe
         # Otherwise the input keyword arg is still set to the None type
-        finished_process = subprocess.run(args, input=password, capture_output=True, check=True, text=True)
+        if echo_password:
+            finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=password)
+        else:
+            finished_process = subprocess.run(args, capture_output=True, check=True, text=True)
 
         # If the subprocess didn't raise an exception, then it succeeded
         std_out_without_password = ' '.join(redact_password_from_list(finished_process.stdout.splitlines(), password))
@@ -609,8 +610,8 @@ def main():
     parse_args()
     set_logging()
 
-    cmd_git_cfg_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "*"]
-    subprocess_run(cmd_git_cfg_safe_directory)
+    cmd_cfg_git_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "\"*\""]
+    subprocess_run(cmd_cfg_git_safe_directory)
 
     logging.debug("Multiprocessing module using start method: " + multiprocessing.get_start_method())
 
