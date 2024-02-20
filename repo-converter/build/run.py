@@ -381,6 +381,7 @@ def clone_svn_repos():
             cmd_svn_run_info        += arg_svn_username
             cmd_svn_run_log         += arg_svn_username
             cmd_git_run_svn_init    += arg_svn_username
+            cmd_git_run_svn_fetch   += arg_svn_username
 
         # TODO: Delete these after confirming the new approach works on the customer's instance
         # if password:
