@@ -474,7 +474,7 @@ def clone_svn_repos():
         # Configure the .gitignore file, if provided
         if git_ignore_file_path:
             if os.path.exists(git_ignore_file_path):
-                logging.debug(f"Copying .gitignore file from {git_ignore_file_path} to {repo_path}")
+                logging.info(f"Copying .gitignore file from {git_ignore_file_path} to {repo_path}")
                 shutil.copy2(git_ignore_file_path, repo_path)
             else:
                 logging.warning(f".gitignore file not found at {git_ignore_file_path}, skipping")
@@ -529,7 +529,7 @@ def subprocess_run(args, password=None):
 
         # If the subprocess didn't raise an exception, then it succeeded
         std_out_without_password = ' '.join(redact_password_from_list(finished_process.stdout.splitlines(), password))
-        logging.debug(f"Subprocess succeeded: {args_without_password_string} with output: {std_out_without_password}")
+        logging.info(f"Subprocess succeeded: {args_without_password_string} with output: {std_out_without_password}")
 
     except subprocess.CalledProcessError as error:
 
@@ -573,7 +573,7 @@ def clone_tfs_repos():
             tfs_repos_dict[repo_key] = repos_dict[repo_key]
 
 
-    logging.debug("Cloning TFS repos" + str(tfs_repos_dict))
+    logging.info("Cloning TFS repos" + str(tfs_repos_dict))
 
 
 def status_update_and_cleanup_zombie_processes():
@@ -583,9 +583,9 @@ def status_update_and_cleanup_zombie_processes():
         for process in running_processes:
 
             if process.is_alive():
-                logging.debug(f"pid {process.pid} still running: {process.name}")
+                logging.info(f"pid {process.pid} still running: {process.name}")
             else:
-                logging.debug(f"Process finished with exit code {process.exitcode}: {process.name}")
+                logging.info(f"Process finished with exit code {process.exitcode}: {process.name}")
                 running_processes.remove(process)
 
     except Exception as e:
@@ -615,7 +615,7 @@ def main():
 
     while True:
 
-        logging.debug(f"Starting {script_name} run {run_number} with args: " + str(args_dict))
+        logging.info(f"Starting {script_name} run {run_number} with args: " + str(args_dict))
 
         status_update_and_cleanup_zombie_processes()
 
@@ -623,14 +623,14 @@ def main():
         clone_svn_repos()
         # clone_tfs_repos()
 
-        logging.debug(f"Finishing {script_name} run {run_number} with args: " + str(args_dict))
+        logging.info(f"Finishing {script_name} run {run_number} with args: " + str(args_dict))
         run_number += 1
 
         status_update_and_cleanup_zombie_processes()
         # Sleep the configured interval
         # Wait 1 second for the last repo sub process to get kicked off before logging this message, otherwise it gets logg out of order
         time.sleep(1)
-        logging.debug(f"Sleeping for BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS={run_interval_seconds} seconds")
+        logging.info(f"Sleeping for BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS={run_interval_seconds} seconds")
         time.sleep(int(run_interval_seconds))
 
 
