@@ -524,7 +524,11 @@ def subprocess_run(args, password=None, std_in=None):
 
         # If password is provided to this function, feed it into the subprocess' stdin pipe
         # Otherwise the input keyword arg is still set to the None type
-        finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=std_in)
+
+        if std_in:
+            finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=std_in)
+        else:
+            finished_process = subprocess.run(args, capture_output=True, check=True, text=True)
 
         # If the subprocess didn't raise an exception, then it succeeded
         std_out_without_password = ' '.join(redact_password_from_list(finished_process.stdout.splitlines(), password))
