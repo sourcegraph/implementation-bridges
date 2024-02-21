@@ -447,7 +447,7 @@ def clone_svn_repos():
                 cmd_run_git_svn_init   += ["--branches", branches]
 
             # Initialize the repo
-            subprocess_run(cmd_run_git_svn_init, password, password)
+            subprocess_run(cmd_run_git_svn_init, password, arg_svn_echo_password)
 
             # Configure the bare clone
             subprocess_run(cmd_cfg_git_bare_clone)
@@ -507,7 +507,7 @@ def redact_password_from_list(args, password=None):
     return args_without_password
 
 
-def subprocess_run(args, password=None, subprocess_stdin_input=None):
+def subprocess_run(args, password=None, echo_password=None):
 
     # Using the subprocess module
     # https://docs.python.org/3/library/subprocess.html#module-subprocess
@@ -525,8 +525,8 @@ def subprocess_run(args, password=None, subprocess_stdin_input=None):
         # If password is provided to this function, feed it into the subprocess' stdin pipe
         # Otherwise the input keyword arg is still set to the None type
 
-        if subprocess_stdin_input:
-            finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=subprocess_stdin_input)
+        if echo_password:
+            finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=password)
         else:
             finished_process = subprocess.run(args, capture_output=True, check=True, text=True)
 
