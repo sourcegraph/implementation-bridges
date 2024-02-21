@@ -447,7 +447,7 @@ def clone_svn_repos():
                 cmd_run_git_svn_init   += ["--branches", branches]
 
             # Initialize the repo
-            subprocess_run(cmd_run_git_svn_init, password)
+            subprocess_run(cmd_run_git_svn_init, password, password)
 
             # Configure the bare clone
             subprocess_run(cmd_cfg_git_bare_clone)
@@ -481,7 +481,7 @@ def clone_svn_repos():
         # Start a fetch
         logging.info(f"Fetching SVN repo {repo_key} with {cmd_run_git_svn_fetch_without_password}")
 
-        process = multiprocessing.Process(target=subprocess_run, name="git svn fetch "+git_repo_name, args=(cmd_run_git_svn_fetch, password, arg_svn_echo_password))
+        process = multiprocessing.Process(target=subprocess_run, name="git svn fetch "+git_repo_name, args=(cmd_run_git_svn_fetch, password, password))
         process.start()
         # process.join() # join prevents zombies, but it also blocks parallel processing
         running_processes.append(process)
@@ -507,7 +507,7 @@ def redact_password_from_list(args, password=None):
     return args_without_password
 
 
-def subprocess_run(args, password=None, echo_password=None):
+def subprocess_run(args, password=None, std_in=None):
 
     # Using the subprocess module
     # https://docs.python.org/3/library/subprocess.html#module-subprocess
@@ -524,10 +524,7 @@ def subprocess_run(args, password=None, echo_password=None):
 
         # If password is provided to this function, feed it into the subprocess' stdin pipe
         # Otherwise the input keyword arg is still set to the None type
-        if echo_password:
-            finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=password)
-        else:
-            finished_process = subprocess.run(args, capture_output=True, check=True, text=True)
+        finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=std_in)
 
         # If the subprocess didn't raise an exception, then it succeeded
         std_out_without_password = ' '.join(redact_password_from_list(finished_process.stdout.splitlines(), password))
@@ -611,9 +608,22 @@ def status_update_and_cleanup_zombie_processes():
     logging.info(f"Count of repo fetch processes finished: {count_processes_finished}")
     logging.info("Cleaning up zombie processes")
 
+    # Use the multiprocessing.active_children() method to do the same using the module's internal list of child processes its spawned
     # Returns a list of all child processes still running
     # Also joins all completed (zombie) processes to clear them
-    multiprocessing.active_children()
+    active_children = multiprocessing.active_children()
+    logging.debug(f"multiprocessing.active_children = {active_children}")
+
+    # # Use the os / ps method
+    # # Get this script's PID (should be PID 1 in Docker container)
+    # os_this_pid = str(os.getpid())
+    # # Get the list of all
+    # ps_output = subprocess_run(["ps", "-opid", "--no-headers", "--ppid", os_this_pid])
+    # os_child_pids = [int(line) for line in ps_output.stdout.splitlines()]
+
+    # for os_child_pid in os_child_pids:
+    #     if os_child_pid not in [process.pid for process in running_processes]:
+    #         logging.debug(f"Found a child pid {os_child_pid} we're not tracking.")
 
 
 def main():
