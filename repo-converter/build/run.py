@@ -507,7 +507,7 @@ def redact_password_from_list(args, password=None):
     return args_without_password
 
 
-def subprocess_run(args, password=None, std_in=None):
+def subprocess_run(args, password=None, subprocess_stdin_input=None):
 
     # Using the subprocess module
     # https://docs.python.org/3/library/subprocess.html#module-subprocess
@@ -525,8 +525,8 @@ def subprocess_run(args, password=None, std_in=None):
         # If password is provided to this function, feed it into the subprocess' stdin pipe
         # Otherwise the input keyword arg is still set to the None type
 
-        if std_in:
-            finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=std_in)
+        if subprocess_stdin_input:
+            finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=subprocess_stdin_input)
         else:
             finished_process = subprocess.run(args, capture_output=True, check=True, text=True)
 
