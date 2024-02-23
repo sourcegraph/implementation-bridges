@@ -18,5 +18,7 @@ services:
       - ../../config/toprc:/root/.config/procps/toprc
       - ../../src-serve-root/:/sourcegraph/src-serve-root
     environment:
-      - BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS=60
+      - REPO_CONVERTER_INTERVAL_SECONDS=60
       - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO
+      # - REPOS_TO_CONVERT="/sourcegraph/repos-to-convert.yaml" # Path inside the container to find this file, only change to match if the right side of the volume mapping changes
+      # - SRC_SERVE_ROOT="/sourcegraph/src-serve-root" # Path inside the container to find this directory, only change to match if the right side of the volume mapping changes

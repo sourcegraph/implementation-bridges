@@ -13,14 +13,16 @@ ENV PYTHONDONTWRITEBYTECODE=1
 # the application crashes without emitting any logs due to buffering
 ENV PYTHONUNBUFFERED=1
 
-# Install python
+# Install packages
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install --no-install-recommends -y \
         cron \
+        gcc \
         git \
         git-svn \
         python3 \
+        python3-dev \
         python3-pip \
         python3-wheel \
         subversion \
@@ -31,8 +33,6 @@ RUN apt-get update && \
     systemctl enable cron && \
     systemctl start cron
 
-#        python3-dev \
-#        gcc \
 
 # Download dependencies as a separate step to take advantage of Docker's caching
 # Leverage a cache mount to /root/.cache/pip to speed up subsequent builds

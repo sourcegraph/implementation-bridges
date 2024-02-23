@@ -3,16 +3,25 @@
 
 ### TODO:
 
-    # Configure batch size, so we see repos in Sourcegraph update as the fetch jobs progress
+    # Git SSH clone
+        # Move git SSH clone from outside bash script into this script
 
+    # Configure batch size, so we see repos in Sourcegraph update as the fetch jobs progress
         # git svn fetch --revision START:END
         # git svn fetch --revision BASE:[number]
             # to speed things along - so I recently added that as an answer to my own question (update now taking routinely less than an hour).  Still that all seemed really odd. "--revision" isn't documented as an option to "git svn fetch", you need to dig START out of .git/svn/.metadata and END out of the SVN repository.
 
-    # Git SSH clone
+    # When and how to change config parameters
+
+        # Config parameters we want to support changing without having to docker compose down && docker compose up
+            # Should be able to change / manage all config parameters without having to down && up
+
+        # Config parameters we want to control remotely
+            # Is changing these remotely sensible, especially if we don't have remote logging?
 
     # Parallelism
         # Poll the fetch process
+            # Get the last line of output
             # To see if it's actually doing something, then log it
             # Output status update on clone jobs
                 # Revision x of y completed, time taken, ETA for remaining revisions
@@ -71,7 +80,7 @@
 ## Import libraries
 # Standard libraries
 from pathlib import Path                                    # https://docs.python.org/3/library/pathlib.html
-import argparse                                             # https://docs.python.org/3/library/argparse.html
+# import argparse                                             # https://docs.python.org/3/library/argparse.html
 import json                                                 # https://docs.python.org/3/library/json.html
 import logging                                              # https://docs.python.org/3/library/logging.html
 import multiprocessing                                      # https://docs.python.org/3/library/multiprocessing.html
@@ -84,125 +93,80 @@ import time                                                 # https://docs.pytho
 # Third party libraries
 # psutil requires adding gcc to the Docker image build, which adds about 4 minutes to the build time, and doubled the size of the image
 # If there's a way to remove it, that may be handy
-# import psutil                                               # https://pypi.org/project/psutil/
+import psutil                                               # https://pypi.org/project/psutil/
 import yaml                                                 # https://pyyaml.org/wiki/PyYAMLDocumentation
 
 
 # Global variables
-script_name = os.path.basename(__file__)
-args_dict = {}
+environment_variables_dict = {}
 repos_dict = {}
-running_processes = []
+script_name = os.path.basename(__file__)
+script_run_number = 1
 
 
-def signal_handler(signal, frame):
-    signal_name = signal.Signals(signal).name
-    logging.debug(f"Received signal {signal_name}: {signal} frame: {frame}")
-signal.signal(signal.SIGINT, signal_handler)
+def register_signal_handler():
+
+    logging.debug(f"Registering signal handler")
+
+    try:
+
+        signal.signal(signal.SIGINT, signal_handler)
+
+    except Exception as exception:
+
+        logging.error(f"Registering signal handler failed: {exception}")
+
+    logging.debug(f"Registering signal handler succeeded")
 
 
-def parse_args():
+def signal_handler(incoming_signal, frame):
 
-    # Clear the global args_dict to ensure any args unset in this run get unset
-    args_dict.clear()
+    logging.debug(f"Received signal: {incoming_signal} frame: {frame}")
 
-    # Parse the command args
-    parser = argparse.ArgumentParser(
-        description     = "Clone TFS and SVN repos, convert them to Git, then serve them via src serve-git",
-        usage           = f"Use {script_name} --help for more information",
-        formatter_class = argparse.ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument(
-        "--debug",
-        action  = "store_true",
-        default = False,
-        help    = "Quick flag to set --log-level DEBUG",
-    )
-    parser.add_argument(
-        "--repos-to-convert",
-        default = "/sourcegraph/repos-to-convert.yaml",
-        help    = "/sourcegraph/repos-to-convert.yaml file path, to read a list of TFS / SVN repos and access tokens to iterate through",
-    )
-    parser.add_argument(
-        "--log-file",
-        help    = "Log file path",
-    )
-    parser.add_argument(
-        "--log-level",
-        choices = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        help    = "Log level",
-    )
-    parser.add_argument(
-        "--quiet", "-q",
-        action  = "store_true",
-        help    = "Run without logging to stdout",
-    )
-    parser.add_argument(
-        "--repo-share-path",
-        default = "/sourcegraph/src-serve-root",
-        help    = "Root of path to directory to store cloned Git repos",
-    )
-    parsed = parser.parse_args()
+    signal_name = signal.Signals(incoming_signal).name
 
-    # Store the parsed args in the args dictionary
-    args_dict["repos_to_convert_file"]  = Path(parsed.repos_to_convert)
-    args_dict["repo_share_path"]        = parsed.repo_share_path
-
-    if parsed.quiet:
-        args_dict["quiet"] = parsed.quiet
-
-    if parsed.log_file:
-        args_dict["log_file"] = Path(parsed.log_file)
-
-    # Set the log level, in order of ascending precedence
-    # Set the default, so this key isn't left empty
-    args_dict["log_level"] = "INFO"
-
-    # Override the default if defined in the OS environment variables
-    if os.environ.get('LOG_LEVEL'):
-        args_dict["log_level"] = os.environ.get('LOG_LEVEL')
-
-    # Override the default and OS environment variables if specified in --log-level arg
-    if parsed.log_level:
-        args_dict["log_level"] = parsed.log_level
-
-    # Override all if --debug provided
-    if parsed.debug:
-        args_dict["log_level"] = "DEBUG"
+    logging.debug(f"Handled signal {signal_name}: {incoming_signal} frame: {frame}")
 
 
-def set_logging():
+def load_config_from_environment_variables():
 
-    logging_handlers = []
-    invalid_log_args = False
+    # Try and read the environment variables from the Docker container's environment config
+    # Set defaults in case they're not defined
 
-    # If the user provided a --log-file arg, then write to the file
-    if "log_file" in args_dict.keys():
-        logging_handlers.append(logging.FileHandler(args_dict["log_file"]))
+    # DEBUG INFO WARNING ERROR CRITICAL
+    environment_variables_dict['LOG_LEVEL']                         = os.environ.get("LOG_LEVEL", "DEBUG")
+    environment_variables_dict['REPO_CONVERTER_INTERVAL_SECONDS']   = int(os.environ.get("REPO_CONVERTER_INTERVAL_SECONDS", 3600))
+    # Path inside the container to find this file, only change to match if the right side of the volume mapping changes
+    environment_variables_dict['REPOS_TO_CONVERT']                  = os.environ.get("REPOS_TO_CONVERT", "/sourcegraph/repos-to-convert.yaml")
+    # Path inside the container to find this directory, only change to match if the right side of the volume mapping changes
+    environment_variables_dict['SRC_SERVE_ROOT']                    = os.environ.get("SRC_SERVE_ROOT", "/sourcegraph/src-serve-root")
 
-    # If the user provided the --quiet arg, then don't write to stdout
-    if "quiet" not in args_dict.keys():
-        logging_handlers.append(logging.StreamHandler(sys.stdout))
 
-    if len(logging_handlers) == 0:
-        invalid_log_args = True
-        logging_handlers.append(logging.StreamHandler(sys.stdout))
+def load_config_from_repos_to_convert_file():
+    # Try and load the environment variables from the REPOS_TO_CONVERT file
 
+
+    # Check if the default config file exists
+    # If yes, read configs from it
+    # If no, use the environment variables
+    pass
+
+
+def configure_logging():
 
     logging.basicConfig(
-        handlers    = logging_handlers,
+        stream      = sys.stdout,
         datefmt     = "%Y-%m-%d %H:%M:%S",
         encoding    = "utf-8",
         format      = f"%(asctime)s; {script_name}; %(levelname)s; %(message)s",
-        level       = args_dict["log_level"]
+        level       = environment_variables_dict['LOG_LEVEL']
     )
-
-    if invalid_log_args:
-        logging.critical(f"If --quiet is used to not print logs to stdout, then --log-file must be used to specify a log file. Invalid args: {args_dict}")
-        sys.exit(1)
 
 
 def parse_repos_to_convert_file_into_repos_dict():
+
+    # The Python runtime seems to require this to get specified
+    global repos_dict
 
     # Clear the dict for this execution to remove repos which have been removed from the yaml file
     repos_dict.clear()
@@ -211,28 +175,29 @@ def parse_repos_to_convert_file_into_repos_dict():
     try:
 
         # Open the file
-        with open(args_dict["repos_to_convert_file"], "r") as repos_to_convert_file:
+        with open(environment_variables_dict['REPOS_TO_CONVERT'], "r") as repos_to_convert_file:
 
             # This should return a dict
-            code_hosts_list_temp = yaml.safe_load(repos_to_convert_file)
+            repos_dict = yaml.safe_load(repos_to_convert_file)
+            # code_hosts_list_temp = yaml.safe_load(repos_to_convert_file)
 
-            # Weird thing we have to do
-            # Reading directory into repos_dict doesn't persist the dict outside the function
-            for repo_dict_key in code_hosts_list_temp.keys():
+            # # Weird thing we have to do
+            # # Reading directory into repos_dict doesn't persist the dict outside the function
+            # for repo_dict_key in code_hosts_list_temp.keys():
 
-                # Store the repo_dict_key in the repos_dict
-                repos_dict[repo_dict_key] = code_hosts_list_temp[repo_dict_key]
+            #     # Store the repo_dict_key in the repos_dict
+            #     repos_dict[repo_dict_key] = code_hosts_list_temp[repo_dict_key]
 
-            logging.info(f"Parsed {len(repos_dict)} repos from {args_dict['repos_to_convert_file']}")
+            logging.info(f"Parsed {len(repos_dict)} repos from {environment_variables_dict['REPOS_TO_CONVERT']}")
 
     except FileNotFoundError:
 
-        logging.error(f"repos-to-convert.yaml file not found at {args_dict['repos_to_convert_file']}")
+        logging.error(f"repos-to-convert.yaml file not found at {environment_variables_dict['REPOS_TO_CONVERT']}")
         sys.exit(1)
 
     except (AttributeError, yaml.scanner.ScannerError) as e:
 
-        logging.error(f"Invalid YAML file format in {args_dict['repos_to_convert_file']}, please check the structure matches the format in the README.md. Exception: {type(e)}, {e.args}, {e}")
+        logging.error(f"Invalid YAML file format in {environment_variables_dict['REPOS_TO_CONVERT']}, please check the structure matches the format in the README.md. Exception: {type(e)}, {e.args}, {e}")
         sys.exit(2)
 
 
@@ -271,7 +236,7 @@ def clone_svn_repos():
             # git_org_name              = asf
             # git_repo_name             = parquet
             # git repo root             = site              # arbitrary path inside the repo where contributors decided to start storing /trunk /branches /tags and other files to be included in the repo
-        repo_path = str(args_dict["repo_share_path"]+"/"+code_host_name+"/"+git_org_name+"/"+git_repo_name)
+        repo_path = str(environment_variables_dict['SRC_SERVE_ROOT']+"/"+code_host_name+"/"+git_org_name+"/"+git_repo_name)
 
         ## Define common command args
         arg_svn_non_interactive = [ "--non-interactive"                 ] # Do not prompt, just fail if the command doesn't work, only used for direct `svn` command
@@ -292,6 +257,18 @@ def clone_svn_repos():
         cmd_cfg_git_authors_file    = arg_git_cfg + [ "svn.authorsfile", authors_file_path  ]
         cmd_cfg_git_authors_prog    = arg_git_cfg + [ "svn.authorsProg", authors_prog_path  ]
         cmd_run_git_svn_fetch       = arg_git_svn + [ "fetch"                               ]
+
+        ## Modify commands based on config parameters
+        if username:
+            cmd_run_svn_info        += arg_svn_username
+            cmd_run_svn_log         += arg_svn_username
+            cmd_run_git_svn_init    += arg_svn_username
+            cmd_run_git_svn_fetch   += arg_svn_username
+
+        if password:
+            arg_svn_echo_password   = True
+            cmd_run_svn_info        += arg_svn_password
+            cmd_run_svn_log         += arg_svn_password
 
         # Used to check if this command is already running in another process, without the password
         cmd_run_git_svn_fetch_without_password = ' '.join(cmd_run_git_svn_fetch)
@@ -332,9 +309,9 @@ def clone_svn_repos():
 
             ps_command = ["ps", "-e", "--format", "%a"]
 
-            completed_ps_command = subprocess.run(ps_command, check=True, capture_output=True, text=True)
+            completed_ps_command = subprocess_run(ps_command)
 
-            if cmd_run_git_svn_fetch_without_password in completed_ps_command.stdout:
+            if cmd_run_git_svn_fetch_without_password in completed_ps_command:
 
                 logging.info(f"Fetching process already running for {repo_key}")
                 continue
@@ -375,18 +352,6 @@ def clone_svn_repos():
 
                         # Break out of the inner for loop
                         break
-
-        ## Modify commands based on config parameters
-        if username:
-            cmd_run_svn_info        += arg_svn_username
-            cmd_run_svn_log         += arg_svn_username
-            cmd_run_git_svn_init    += arg_svn_username
-            cmd_run_git_svn_fetch   += arg_svn_username
-
-        if password:
-            arg_svn_echo_password   = True
-            cmd_run_svn_info        += arg_svn_password
-            cmd_run_svn_log         += arg_svn_password
 
         ## Run commands
         # Run the svn info command to test logging in to the SVN server, for network connectivity and credentials
@@ -447,7 +412,7 @@ def clone_svn_repos():
                 cmd_run_git_svn_init   += ["--branches", branches]
 
             # Initialize the repo
-            subprocess_run(cmd_run_git_svn_init, password, password)
+            subprocess_run(cmd_run_git_svn_init, password, arg_svn_echo_password)
 
             # Configure the bare clone
             subprocess_run(cmd_cfg_git_bare_clone)
@@ -481,14 +446,16 @@ def clone_svn_repos():
         # Start a fetch
         logging.info(f"Fetching SVN repo {repo_key} with {cmd_run_git_svn_fetch_without_password}")
 
-        process = multiprocessing.Process(target=subprocess_run, name="git svn fetch "+git_repo_name, args=(cmd_run_git_svn_fetch, password, password))
-        process.start()
-        # process.join() # join prevents zombies, but it also blocks parallel processing
-        running_processes.append(process)
+        # Retaining a reference to this process prevents the process from getting cleaned up automagically
+        # But, removing all references to it doesn't seem to help it
+        # So, need to keep a list and clean it up manually
+        multiprocessing.Process(target=subprocess_run, name=f"subprocess_run({cmd_run_git_svn_fetch})", args=(cmd_run_git_svn_fetch, password, password)).start()
 
 
 def redact_password_from_list(args, password=None):
 
+    # AttributeError: 'list' object has no attribute 'replace'
+    # Need to iterate through strings in list
     args_without_password = []
 
     if password:
@@ -507,45 +474,65 @@ def redact_password_from_list(args, password=None):
     return args_without_password
 
 
-def subprocess_run(args, password=None, std_in=None):
-
-    # Using the subprocess module
-    # https://docs.python.org/3/library/subprocess.html#module-subprocess
-    # Waits for the process to complete
+def subprocess_run(args, password=None, echo_password=None):
 
     # Redact passwords for logging
     # Convert to string because that's all we're using it for anyway
     args_without_password_string = ' '.join(redact_password_from_list(args, password))
-    std_out_without_password = None
+    subprocess_stdout_and_stderr_without_password = None
+    subprocess_stdout_without_password = None
+    subprocess_stderr_without_password = None
 
     try:
 
         logging.debug(f"Starting subprocess: {args_without_password_string}")
 
-        # If password is provided to this function, feed it into the subprocess' stdin pipe
-        # Otherwise the input keyword arg is still set to the None type
-        finished_process = subprocess.run(args, capture_output=True, check=True, text=True, input=std_in)
+        subprocess_to_run = psutil.Popen(
+            args    = args,
+            stdin   = subprocess.PIPE,
+            stdout  = subprocess.PIPE,
+            stderr  = subprocess.STDOUT,
+            text    = True,
+        )
 
-        # If the subprocess didn't raise an exception, then it succeeded
-        std_out_without_password = ' '.join(redact_password_from_list(finished_process.stdout.splitlines(), password))
-        logging.info(f"Subprocess succeeded: {args_without_password_string} with output: {std_out_without_password}")
+        # If password is provided to this function, feed it into the subprocess' stdin pipe
+        if echo_password:
+            subprocess_stdout_and_stderr = subprocess_to_run.communicate(password)
+        else:
+            subprocess_stdout_and_stderr = subprocess_to_run.communicate()
+
+        subprocess_stdout_and_stderr_without_password = redact_password_from_list(subprocess_stdout_and_stderr[0].splitlines(), password)
+
+        if subprocess_to_run.returncode == 0:
+
+            subprocess_stdout_without_password = subprocess_stdout_and_stderr_without_password
+            logging.debug(f"Subprocess {subprocess_to_run} succeeded with stdout: {subprocess_stdout_without_password}")
+
+        else:
+
+            subprocess_stderr_without_password = subprocess_stdout_and_stderr_without_password
+            logging.error(f"Subprocess {subprocess_to_run} failed with stderr: {subprocess_stderr_without_password}")
 
     except subprocess.CalledProcessError as error:
+            logging.error(f"Subprocess {subprocess_to_run} raised exception: {error}")
 
-        std_err_without_password = ' '.join(redact_password_from_list(error.stderr.splitlines(), password))
-        logging.error(f"Subprocess failed: {args_without_password_string} with error: {error}, and stderr: {std_err_without_password}")
+
+    if subprocess_stderr_without_password:
 
         # Handle the case of abandoned git svn lock files blocking fetch processes
         # We already know that no other git svn fetch processes are running, because we checked for that before spawning this fetch process
         # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/wsl/zest/.git/svn/refs/remotes/git-svn/index.lock': File exists.  Another git process seems to be running in this repository, e.g. an editor opened by 'git commit'. Please make sure all processes are terminated then try again. If it still fails, a git process may have crashed in this repository earlier: remove the file manually to continue. write-tree: command returned error: 128
         lock_file_error_strings = ["Unable to create", "index.lock", "File exists"]
-        lock_file_error_conditions = (lock_file_error_string in std_err_without_password for lock_file_error_string in lock_file_error_strings)
+
+        # Handle this as a string,
+        stderr_without_password_string = " ".join(subprocess_stderr_without_password)
+        lock_file_error_conditions = (lock_file_error_string in stderr_without_password_string for lock_file_error_string in lock_file_error_strings)
         if all(lock_file_error_conditions):
 
             try:
 
-                # Get the index.lock file path from std_err_without_password
-                lock_file_path = std_err_without_password.split("Unable to create '")[1].split("': File exists.")[0]
+                # Get the index.lock file path from stderr_without_password_string
+                lock_file_path = stderr_without_password_string.split("Unable to create '")[1].split("': File exists.")[0]
 
                 logging.warning(f"Fetch failed to start due to finding a lockfile in repo at {lock_file_path}. Deleting the lockfile so it'll try again on the next run.")
 
@@ -559,106 +546,138 @@ def subprocess_run(args, password=None, std_in=None):
             except ValueError as error:
                 logging.error(f"Failed to find git execution path in command args while trying to delete {lock_file_path} with error: {error}")
 
-    return std_out_without_password
+    return subprocess_stdout_without_password
 
 
 def clone_tfs_repos():
+    logging.warning("Cloning TFS repos function not implemented yet")
 
-    # Declare an empty dict for TFS repos to extract them from the repos_dict
-    tfs_repos_dict = {}
+    # # Declare an empty dict for TFS repos to extract them from the repos_dict
+    # tfs_repos_dict = {}
 
-    # Loop through the repos_dict, find the type: tfs repos, then add them to the dict of TFS repos
-    for repo_key in repos_dict.keys():
+    # # Loop through the repos_dict, find the type: tfs repos, then add them to the dict of TFS repos
+    # for repo_key in repos_dict.keys():
 
-        repo_type = repos_dict[repo_key].get('type','').lower()
+    #     repo_type = repos_dict[repo_key].get('type','').lower()
 
-        if repo_type == 'tfs' or repo_type == 'tfvc':
+    #     if repo_type == 'tfs' or repo_type == 'tfvc':
 
-            tfs_repos_dict[repo_key] = repos_dict[repo_key]
+    #         tfs_repos_dict[repo_key] = repos_dict[repo_key]
 
 
-    logging.info("Cloning TFS repos" + str(tfs_repos_dict))
+    # logging.info("Cloning TFS repos" + str(tfs_repos_dict))
+
+
+
+def clone_git_repos():
+    logging.warning("Cloning Git repos function not implemented yet")
 
 
 def status_update_and_cleanup_zombie_processes():
 
-    count_processes_still_running = 0
-    count_processes_finished = 0
 
-    try:
+    # subprocess_to_run = psutil.Popen(
+    #     args    = args,
+    #     stdin   = subprocess.PIPE,
+    #     stdout  = subprocess.PIPE,
+    #     stderr  = subprocess.STDOUT,
+    #     text    = True,
+    # )
 
-        for process in running_processes:
+    # Get the current process ID, should be 1 in Docker
+    os_this_pid = os.getpid()
 
-            if process.is_alive():
+    # Using a set for built-in deduplication
+    process_pids_to_wait_for = set()
 
-                count_processes_still_running += 1
-                logging.info(f"pid {process.pid} still running: {process.name}")
+    # Get a oneshot snapshot of all processes running this instant
+    # Loop through for each processes
+    for process in psutil.process_iter():
 
-            else:
+        # Get all upstream parent PIDs of the process
+        process_parents_pids = [process_parent.pid for process_parent in process.parents()]
 
-                count_processes_finished += 1
-                logging.info(f"Process finished with exit code {process.exitcode}: {process.name}")
-                running_processes.remove(process)
+        # If this pid is in the parents, then we know its a child / grandchild / great-grandchild / etc. process of this process
+        if os_this_pid in process_parents_pids:
 
-    except Exception as e:
+            # Add the process' own PID to the set
+            process_pids_to_wait_for.add(process.pid)
 
-        logging.error(f"Failed while checking for zombie processes, Exception: {type(e)}, {e.args}, {e}")
+            # Loop through the process' parents and add them to the set too
+            for process_parents_pid in process_parents_pids:
 
-    logging.info(f"Count of repo fetch processes still running: {count_processes_still_running}")
-    logging.info(f"Count of repo fetch processes finished: {count_processes_finished}")
-    logging.info("Cleaning up zombie processes")
+                process_pids_to_wait_for.add(process_parents_pid)
 
-    # Use the multiprocessing.active_children() method to do the same using the module's internal list of child processes its spawned
-    # Returns a list of all child processes still running
-    # Also joins all completed (zombie) processes to clear them
-    active_children = multiprocessing.active_children()
-    logging.debug(f"multiprocessing.active_children = {active_children}")
+    # Remove this script's PID so it's not waiting on itself
+    process_pids_to_wait_for.discard(os_this_pid)
 
-    # # Use the os / ps method
-    # # Get this script's PID (should be PID 1 in Docker container)
-    # os_this_pid = str(os.getpid())
-    # # Get the list of all
-    # ps_output = subprocess_run(["ps", "-opid", "--no-headers", "--ppid", os_this_pid])
-    # os_child_pids = [int(line) for line in ps_output.stdout.splitlines()]
+    # Now that we have a set of all child / grandchild / etc PIDs without our own
+    # Loop through them and wait for each one
+    # If the process is a zombie, then waiting for it:
+        # Gets the return value
+        # Removes the process from the OS' process table
+        # Raises an exception
+    for process_pid_to_wait_for in process_pids_to_wait_for:
 
-    # for os_child_pid in os_child_pids:
-    #     if os_child_pid not in [process.pid for process in running_processes]:
-    #         logging.debug(f"Found a child pid {os_child_pid} we're not tracking.")
+        try:
+
+            # Create an instance of a Process object for the PID number
+            # Raises psutil.NoSuchProcess if the PID has already finished
+            process_to_wait_for = psutil.Process(process_pid_to_wait_for)
+
+            # This rarely fires, ex. if cleaning up processes at the beginning of a script execution and the process finished during the interval
+            if process_to_wait_for.status() == psutil.STATUS_ZOMBIE:
+                logging.debug(f"Subprocess {process_to_wait_for} is a zombie")
+
+            # Wait a short period, and capture the return status
+            # Raises psutil.TimeoutExpired if the process is busy executing longer than the wait time
+            return_status = process_to_wait_for.wait(0.1)
+
+            logging.debug(f"Subprocess {process_pid_to_wait_for} finished now with return status: {return_status}")
+
+        except psutil.NoSuchProcess as exception:
+            logging.debug(f"Subprocess {process_pid_to_wait_for} already finished")
+
+        except psutil.TimeoutExpired as exception:
+            logging.debug(f"Subprocess {process_pid_to_wait_for} is still running at this moment")
+
+        except Exception as exception:
+            logging.debug(f"Subprocess {process_pid_to_wait_for} raised exception while waiting: {exception}")
 
 
 def main():
 
-    # Run every 60 minutes by default
-    run_interval_seconds = os.environ.get('BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS', 3600)
-    run_number = 0
+    load_config_from_environment_variables()
+    configure_logging()
+    register_signal_handler()
 
-    parse_args()
-    set_logging()
-
-    cmd_cfg_git_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "\"*\""]
-    subprocess_run(cmd_cfg_git_safe_directory)
-
-    logging.debug("Multiprocessing module using start method: " + multiprocessing.get_start_method())
+    global script_run_number
 
     while True:
 
-        logging.info(f"Starting {script_name} run {run_number} with args: " + str(args_dict))
+        load_config_from_repos_to_convert_file()
+        logging.info(f"Starting {script_name} run {script_run_number} with args: " + str(environment_variables_dict))
 
+        logging.debug("Multiprocessing module using start method: " + multiprocessing.get_start_method())
         status_update_and_cleanup_zombie_processes()
+
+        cmd_cfg_git_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "\"*\""]
+        subprocess_run(cmd_cfg_git_safe_directory)
 
         parse_repos_to_convert_file_into_repos_dict()
         clone_svn_repos()
         # clone_tfs_repos()
-
-        logging.info(f"Finishing {script_name} run {run_number} with args: " + str(args_dict))
-        run_number += 1
+        # clone_git_repos()
 
         status_update_and_cleanup_zombie_processes()
+
+        logging.info(f"Finishing {script_name} run {script_run_number} with args: " + str(environment_variables_dict))
+
         # Sleep the configured interval
-        # Wait 1 second for the last repo sub process to get kicked off before logging this message, otherwise it gets logg out of order
-        time.sleep(1)
-        logging.info(f"Sleeping for BRIDGE_REPO_CONVERTER_INTERVAL_SECONDS={run_interval_seconds} seconds")
-        time.sleep(int(run_interval_seconds))
+        logging.info(f"Sleeping for REPO_CONVERTER_INTERVAL_SECONDS={environment_variables_dict['REPO_CONVERTER_INTERVAL_SECONDS']} seconds")
+
+        script_run_number += 1
+        time.sleep(environment_variables_dict['REPO_CONVERTER_INTERVAL_SECONDS'])
 
 
 if __name__ == "__main__":
