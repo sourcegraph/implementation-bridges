@@ -311,13 +311,6 @@ def clone_svn_repos():
 
             completed_ps_command = subprocess_run(ps_command)
 
-            logging.debug(f"completed_ps_command: {completed_ps_command}")
-            logging.debug(f"cmd_run_git_svn_fetch_without_password: {cmd_run_git_svn_fetch_without_password}")
-
-
-
-            # git -C /sourcegraph/src-serve-root/subversion.noemalife.loc/vcs/las-halia.backend.ejb svn fetch --username svn.sourcegraph
-
             if cmd_run_git_svn_fetch_without_password in completed_ps_command:
 
                 logging.info(f"Fetching process already running for {repo_key}")
