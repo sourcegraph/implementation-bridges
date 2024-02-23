@@ -258,6 +258,18 @@ def clone_svn_repos():
         cmd_cfg_git_authors_prog    = arg_git_cfg + [ "svn.authorsProg", authors_prog_path  ]
         cmd_run_git_svn_fetch       = arg_git_svn + [ "fetch"                               ]
 
+        ## Modify commands based on config parameters
+        if username:
+            cmd_run_svn_info        += arg_svn_username
+            cmd_run_svn_log         += arg_svn_username
+            cmd_run_git_svn_init    += arg_svn_username
+            cmd_run_git_svn_fetch   += arg_svn_username
+
+        if password:
+            arg_svn_echo_password   = True
+            cmd_run_svn_info        += arg_svn_password
+            cmd_run_svn_log         += arg_svn_password
+
         # Used to check if this command is already running in another process, without the password
         cmd_run_git_svn_fetch_without_password = ' '.join(cmd_run_git_svn_fetch)
 
@@ -347,18 +359,6 @@ def clone_svn_repos():
 
                         # Break out of the inner for loop
                         break
-
-        ## Modify commands based on config parameters
-        if username:
-            cmd_run_svn_info        += arg_svn_username
-            cmd_run_svn_log         += arg_svn_username
-            cmd_run_git_svn_init    += arg_svn_username
-            cmd_run_git_svn_fetch   += arg_svn_username
-
-        if password:
-            arg_svn_echo_password   = True
-            cmd_run_svn_info        += arg_svn_password
-            cmd_run_svn_log         += arg_svn_password
 
         ## Run commands
         # Run the svn info command to test logging in to the SVN server, for network connectivity and credentials
