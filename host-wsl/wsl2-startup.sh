@@ -17,7 +17,7 @@ then
 fi
 
 # Start docker compose services
-if ! docker compose -f $repo_build_path/docker-compose.yaml up -d --build
+if ! docker compose -f $repo_build_path/docker-compose.yaml up -d --build --remove-orphans
 then
     docker_compose_exit_status=$?
     echo "docker compose up failed, exit code $docker_compose_exit_status" >> $log_file

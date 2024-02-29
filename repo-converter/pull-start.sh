@@ -14,6 +14,6 @@ repo_converter_dir="$sg_root_dir/implementation-bridges/repo-converter"
 date_time=$(date +"%F %T")
 echo "$date_time - Starting $0" >> "$log_file"
 
-command="git -C $repo_converter_dir pull && docker compose -f $repo_converter_dir/docker-compose.yaml up -d"
+command="git -C $repo_converter_dir pull && docker compose -f $repo_converter_dir/docker-compose.yaml up -d --remove-orphans"
 
 bash -c "$command" >> "$log_file" 2>&1
