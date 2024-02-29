@@ -20,6 +20,7 @@ services:
     volumes:
       - ../src-serve-root/:/sourcegraph/src-serve-root:ro
     command: "serve-git -addr :443 /sourcegraph/src-serve-root"
+    restart: always
     networks:
       - default
 

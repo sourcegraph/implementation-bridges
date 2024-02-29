@@ -11,4 +11,4 @@ repo_converter_build_path="/sourcegraph/implementation-bridges/repo-converter/bu
 
 git -C $repo_converter_build_path pull
 
-docker compose -f $repo_converter_build_path/docker-compose.yaml up -d --build
+docker compose -f $repo_converter_build_path/docker-compose.yaml up -d --build --remove-orphans
