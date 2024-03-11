@@ -575,14 +575,7 @@ def clone_git_repos():
 
 def status_update_and_cleanup_zombie_processes():
 
-
-    # subprocess_to_run = psutil.Popen(
-    #     args    = args,
-    #     stdin   = subprocess.PIPE,
-    #     stdout  = subprocess.PIPE,
-    #     stderr  = subprocess.STDOUT,
-    #     text    = True,
-    # )
+    # The current approach should return the same list of processes as just ps -ef, but may be more flexible
 
     # Get the current process ID, should be 1 in Docker
     os_this_pid = os.getpid()
