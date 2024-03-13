@@ -245,7 +245,7 @@ def clone_svn_repos():
         arg_git                 = [ "git", "-C", repo_path  ]
         arg_git_cfg             = arg_git + [ "config"      ]
         arg_git_svn             = arg_git + [ "svn"         ]
-        arg_batch_end_revision  = [ f"{git_config_namespace}.batch-end-revision" ]
+        arg_batch_end_revision  = [ "--replace-all", f"{git_config_namespace}.batch-end-revision" ]
 
         ## Define commands
         cmd_run_svn_info            = [ "svn", "info"           ] + arg_svn_repo_code_root + arg_svn_non_interactive
