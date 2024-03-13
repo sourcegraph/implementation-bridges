@@ -355,7 +355,7 @@ def clone_svn_repos():
             try:
                 previous_batch_end_revision = subprocess_run(cmd_cfg_git_get_batch_end_revision)[0]
             except Exception as exception:
-                previous_batch_end_revision = ""
+                previous_batch_end_revision = "1"
 
             if previous_batch_end_revision == last_changed_rev:
 
@@ -399,6 +399,10 @@ def clone_svn_repos():
 
             # Initialize the repo
             subprocess_run(cmd_run_git_svn_init, password, arg_svn_echo_password)
+
+            # Initialize this config with a 0 value
+            cmd_cfg_git_set_batch_end_revision.append(str(0))
+            subprocess_run(cmd_cfg_git_set_batch_end_revision)
 
             # Configure the bare clone
             # Testing without the bare clone to see if branching works easier
