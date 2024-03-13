@@ -351,7 +351,11 @@ def clone_svn_repos():
         # If yes, we're up to date, continue to the next repo, instead of forking the git svn process to do the same check
         if repo_state == "update":
 
-            previous_batch_end_revision = subprocess_run(cmd_cfg_git_get_batch_end_revision)[0]
+            #  TypeError: 'NoneType' object is not subscriptable
+            try:
+                previous_batch_end_revision = subprocess_run(cmd_cfg_git_get_batch_end_revision)[0]
+            except Exception as exception:
+                previous_batch_end_revision = ""
 
             if previous_batch_end_revision == last_changed_rev:
 
