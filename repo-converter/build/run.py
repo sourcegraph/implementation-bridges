@@ -3,44 +3,41 @@
 
 ### TODO:
 
-    # Git SSH clone
-        # Move git SSH clone from outside bash script into this script
+    # Definition of Done:
+        # Git - Done enough for PoC, running as a cronjob on the customer's Linux VM
+        # SVN - Need to sort out branches
+        # TFVC - Need to sort out branches
 
-    # Configure batch size, so we see repos in Sourcegraph update as the fetch jobs progress
-        # git svn fetch --revision START:END
-        # git svn fetch --revision BASE:[number]
-            # to speed things along - so I recently added that as an answer to my own question (update now taking routinely less than an hour).  Still that all seemed really odd. "--revision" isn't documented as an option to "git svn fetch", you need to dig START out of .git/svn/.metadata and END out of the SVN repository.
+    # Git
 
-    # When and how to change config parameters
+        # SSH clone
+            # Move git SSH clone from outside bash script into this script
 
-        # Config parameters we want to support changing without having to docker compose down && docker compose up
-            # Should be able to change / manage all config parameters without having to down && up
+    # TFVC
 
-        # Config parameters we want to control remotely
-            # Is changing these remotely sensible, especially if we don't have remote logging?
+        # Convert tfs-to-git Bash script to Python and add it here
 
-    # Parallelism
-        # Poll the fetch process
-            # Get the last line of output
-            # To see if it's actually doing something, then log it
-            # Output status update on clone jobs
-                # Revision x of y completed, time taken, ETA for remaining revisions
+    # SVN
 
-    #.git ignore files
-        # git svn create-ignore
-        # git svn show-ignore
-        # https://git-scm.com/docs/git-svn#Documentation/git-svn.txt-emcreate-ignoreem
+        # Branches
+            # Sort out how to see all branches in Sourcegraph
+            # Atlassian's Java binary to tidy up branches and tags?
 
-    # Performance
-        # --log-window-size
+        # Parallelism
+            # Fork processes earlier, so more of the slow serial stuff for each repo happens in its own thread
+            # ex. git svn log
 
-    # Test layout tags and branches as lists / arrays
+        #.gitignore files
+            # git svn create-ignore
+            # git svn show-ignore
+            # https://git-scm.com/docs/git-svn#Documentation/git-svn.txt-emcreate-ignoreem
 
-    # Atlassian's Java binary to tidy up branches and tags
-
-    # Delete repos from disk no longer in scope for the script?
+        # Test layout tags and branches as lists / arrays
 
 ### Notes:
+
+    # psutil requires adding gcc to the Docker image build, which adds 4 minutes to the build time, and doubles the image size
+    # It would be handy if there was a workaround without it, but multiprocessing.active_children() doesn't join the intermediate processes that Python forks
 
     # Atlassian's SVN to Git migration guide
         # https://www.atlassian.com/git/tutorials/migrating-convert
@@ -80,7 +77,6 @@
 ## Import libraries
 # Standard libraries
 from pathlib import Path                                    # https://docs.python.org/3/library/pathlib.html
-# import argparse                                             # https://docs.python.org/3/library/argparse.html
 import json                                                 # https://docs.python.org/3/library/json.html
 import logging                                              # https://docs.python.org/3/library/logging.html
 import multiprocessing                                      # https://docs.python.org/3/library/multiprocessing.html
@@ -91,16 +87,15 @@ import subprocess                                           # https://docs.pytho
 import sys                                                  # https://docs.python.org/3/library/sys.html
 import textwrap                                             # https://docs.python.org/3/library/textwrap.html
 import time                                                 # https://docs.python.org/3/library/time.html
+import traceback                                            # https://docs.python.org/3/library/traceback.html
 # Third party libraries
-# psutil requires adding gcc to the Docker image build, which adds about 4 minutes to the build time, and doubled the size of the image
-# If there's a way to remove it, that may be handy
 import psutil                                               # https://pypi.org/project/psutil/
 import yaml                                                 # https://pyyaml.org/wiki/PyYAMLDocumentation
 
 
 # Global variables
-child_processes_list_dict = {}
 environment_variables_dict = {}
+git_config_namespace = "repo-converter"
 repos_dict = {}
 script_name = os.path.basename(__file__)
 script_run_number = 1
@@ -161,6 +156,12 @@ def configure_logging():
     )
 
 
+def git_config_safe_directory():
+
+    cmd_cfg_git_safe_directory = ["git", "config", "--system", "--replace-all", "safe.directory", "\"*\""]
+    subprocess_run(cmd_cfg_git_safe_directory)
+
+
 def parse_repos_to_convert_file_into_repos_dict():
 
     # The Python runtime seems to require this to get specified
@@ -217,7 +218,6 @@ def clone_svn_repos():
         git_org_name            = repos_dict[repo_key].get('git-org-name', None)
         git_default_branch      = repos_dict[repo_key].get('git-default-branch','main')
         fetch_batch_size        = repos_dict[repo_key].get('fetch-batch-size', None)
-        repo_total_revisions    = repos_dict[repo_key].get('repo-total-revisions', None)
         authors_file_path       = repos_dict[repo_key].get('authors-file-path', None)
         authors_prog_path       = repos_dict[repo_key].get('authors-prog-path', None)
         git_ignore_file_path    = repos_dict[repo_key].get('git-ignore-file-path', None)
@@ -245,7 +245,7 @@ def clone_svn_repos():
         arg_git                 = [ "git", "-C", repo_path  ]
         arg_git_cfg             = arg_git + [ "config"      ]
         arg_git_svn             = arg_git + [ "svn"         ]
-        arg_batch_end_revision  = [ "repo-converter.batch-end-revision" ]
+        arg_batch_end_revision  = [ f"{git_config_namespace}.batch-end-revision" ]
 
         ## Define commands
         cmd_run_svn_info            = [ "svn", "info"           ] + arg_svn_repo_code_root + arg_svn_non_interactive
@@ -258,6 +258,7 @@ def clone_svn_repos():
         cmd_run_git_svn_fetch       = arg_git_svn + [ "fetch"                               ]
         cmd_cfg_git_get_batch_end_revision  = arg_git_cfg + [ "--get" ] + arg_batch_end_revision
         cmd_cfg_git_set_batch_end_revision  = arg_git_cfg               + arg_batch_end_revision
+        cmd_cfg_git_get_svn_url             = arg_git_cfg + [ "--get", "svn-remote.svn.url" ]
 
         ## Modify commands based on config parameters
         if username:
@@ -311,74 +312,65 @@ def clone_svn_repos():
 
             running_processes = subprocess_run(ps_command)
 
-            logging.debug(f"running_processes: {running_processes}")
             running_processes_string = " ".join(running_processes)
 
             if cmd_run_git_svn_fetch_string in running_processes_string:
 
-                logging.info(f"Fetching process {cmd_run_git_svn_fetch_string} already running for {repo_key}")
+                logging.info(f"{repo_key}; Fetching process already running")
                 continue
 
-            else:
-                logging.info(f"Fetching process {cmd_run_git_svn_fetch_string} not found for {repo_key}, will start it")
-
         except Exception as exception:
-            logging.warning(f"Failed to check if {cmd_run_git_svn_fetch_string} is already running, will try to start it. Exception: {type(exception)}, {exception.args}, {exception}")
-
+            logging.warning(f"{repo_key}; Failed to check if fetching process is already running, will try to start it. Exception: {type(exception)}, {exception.args}, {exception}")
 
         ## Check if we're in the Update state
         # Check if the git repo already exists and has the correct settings in the config file
-        # TODO: Replace this with a git config --get svn.url
-        repo_git_config_file_path = repo_path + "/.git/config"
+        try:
 
-        if os.path.exists(repo_git_config_file_path):
+            svn_remote_url = subprocess_run(cmd_cfg_git_get_svn_url)[0]
 
-            with open(repo_git_config_file_path, "r") as repo_git_config_file:
+            if svn_remote_url in svn_repo_code_root:
 
-                repo_git_config_file_contents = repo_git_config_file.read()
+                repo_state = "update"
 
-                # It's not obvious in an SVN URL what's a server path, repo name, or repo path
-                # SVN init checks the SVN remote's repo config, and stores the repo's URL in the.git/config file
-                # [svn-remote "svn"]
-                #       url = https://svn.apache.org/repos/asf
-                #       fetch = ambari/trunk:refs/remotes/origin/trunk
-                #       branches = ambari/branches/*:refs/remotes/origin/*
-                #       tags = ambari/tags/*:refs/remotes/origin/tags/*
-                # So the url value is likely a substring, or a match of the svn_repo_code_root variable value
-                # So we need to extract the url line, then check if it's in the svn_repo_code_root variable value
-                for line in repo_git_config_file_contents.splitlines():
+        except Exception as exception:
+            logging.warning(f"{repo_key}; failed to check git config --get svn-remote.svn.url. Exception: {type(exception)}, {exception.args}, {exception}")
 
-                    if "url =" in line:
-
-                        # Get the URL value from the line
-                        url_value = line.split("url = ")[1]
-
-                        if url_value in svn_repo_code_root:
-                            repo_state = "update"
-                            logging.info(f"Found existing repo for {repo_key}, updating it")
-
-                        # Break out of the inner for loop
-                        break
 
         ## Run commands
         # Run the svn info command to test logging in to the SVN server, for network connectivity and credentials
         # Capture the output so we know the max revision in this repo's history
         svn_info = subprocess_run(cmd_run_svn_info, password, arg_svn_echo_password)
+        svn_info_string = " ".join(svn_info)
 
-        # TODO: Check if the latest rev number from git log -1 is the same as the max rev number from svn info
+        # Get last changed revision for this repo
+        last_changed_rev_string = "Last Changed Rev: "
+        if last_changed_rev_string in svn_info_string:
+            last_changed_rev = svn_info_string.split(last_changed_rev_string)[1].split(" ")[0]
+
+        # Check if the previous batch end revision is the same as the last changed rev from svn info
         # If yes, we're up to date, continue to the next repo, instead of forking the git svn process to do the same check
+        if repo_state == "update":
 
-        # Get the latest revision number for this repo
-        # if "Last Changed Rev:" in svn_info:
+            previous_batch_end_revision = subprocess_run(cmd_cfg_git_get_batch_end_revision)[0]
 
-            # last_changed_rev = int(svn_info.split("Last Changed Rev: ")[1].split(" ")[0])
-            # logging.debug(f"Last Changed Rev for {repo_key}: {last_changed_rev}")
+            if previous_batch_end_revision == last_changed_rev:
 
+                logging.info(f"{repo_key}; local rev {previous_batch_end_revision}, remote rev {last_changed_rev}, local clone is up to date, skipping it")
+                continue
+
+            else:
+
+                cmd_run_svn_log_remaining_revs = cmd_run_svn_log + ["--revision", f"{previous_batch_end_revision}:HEAD"]
+                svn_log_remaining_revs = subprocess_run(cmd_run_svn_log_remaining_revs, password, arg_svn_echo_password)
+                svn_log_remaining_revs_string = " ".join(svn_log_remaining_revs)
+                remaining_revs = svn_log_remaining_revs_string.count("revision=")
+
+                logging.info(f"{repo_key}; local rev {previous_batch_end_revision}, remote rev {last_changed_rev}, {remaining_revs} revs remaining to catch up, fetching next batch of commits")
 
 
         if repo_state == "create":
 
-            logging.info(f"Didn't find a repo on disk for {repo_key}, creating it")
+            logging.info(f"{repo_key}; didn't find a local clone, creating one")
 
             # Create the repo path if it doesn't exist
             if not os.path.exists(repo_path):
@@ -392,7 +384,7 @@ def clone_svn_repos():
 
                 # Warn the user if they provided an invalid value for the layout, only standard is supported
                 if "standard" not in layout and "std" not in layout:
-                    logging.warning(f"Layout {layout} provided for repo {repo_key}, only standard is supported, continuing assuming standard")
+                    logging.warning(f"{repo_key}; Layout shortcut provided with incorrect value {layout}, only standard is supported for the shortcut, continuing assuming standard, otherwise provide --trunk, --tags, and --branches")
 
             if trunk:
                 cmd_run_git_svn_init   += ["--trunk", trunk]
@@ -405,33 +397,34 @@ def clone_svn_repos():
             subprocess_run(cmd_run_git_svn_init, password, arg_svn_echo_password)
 
             # Configure the bare clone
-            subprocess_run(cmd_cfg_git_bare_clone)
+            # Testing without the bare clone to see if branching works easier
+            # and because I forget why a bare clone was needed
+            # subprocess_run(cmd_cfg_git_bare_clone)
 
 
         ## Back to steps we do for both Create and Update states, so users can update the below parameters without having to restart the clone from scratch
+        # TODO: Check if these configs are already set the same before trying to set them
 
         # Configure the authors file, if provided
         if authors_file_path:
             if os.path.exists(authors_file_path):
                 subprocess_run(cmd_cfg_git_authors_file)
             else:
-                logging.warning(f"Authors file not found at {authors_file_path}, skipping")
+                logging.warning(f"{repo_key}; authors file not found at {authors_file_path}, skipping configuring it")
 
         # Configure the authors program, if provided
         if authors_prog_path:
             if os.path.exists(authors_prog_path):
                 subprocess_run(cmd_cfg_git_authors_prog)
             else:
-                logging.warning(f"Authors prog not found at {authors_prog_path}, skipping")
+                logging.warning(f"{repo_key}; authors prog not found at {authors_prog_path}, skipping configuring it")
 
         # Configure the .gitignore file, if provided
         if git_ignore_file_path:
             if os.path.exists(git_ignore_file_path):
-                logging.info(f"Copying .gitignore file from {git_ignore_file_path} to {repo_path}")
                 shutil.copy2(git_ignore_file_path, repo_path)
             else:
-                logging.warning(f".gitignore file not found at {git_ignore_file_path}, skipping")
-
+                logging.warning(f"{repo_key}; .gitignore file not found at {git_ignore_file_path}, skipping configuring it")
 
         # If the user has configured a batch size
         if fetch_batch_size:
@@ -448,12 +441,10 @@ def clone_svn_repos():
                     # previous_batch_end_revision = git config --get repo-converter.batch-end-revision
                     # Need to fail gracefully
                     previous_batch_end_revision = subprocess_run(cmd_cfg_git_get_batch_end_revision)
-                    logging.debug(f"previous_batch_end_revision: {previous_batch_end_revision}")
 
                     if previous_batch_end_revision:
 
                         batch_start_revision = int(" ".join(previous_batch_end_revision)) + 1
-                        logging.debug(f"batch_start_revision: {batch_start_revision}")
 
                 if repo_state == "create" or batch_start_revision == None:
 
@@ -478,7 +469,8 @@ def clone_svn_repos():
                         batch_end_revision = int(" ".join(cmd_run_svn_log_batch_end_revision_output).split("revision=\"")[1].split("\"")[0])
 
                     except IndexError as exception:
-                        logging.debug(f"Repo {repo_key} likely already up to date; running the fetch without the batch size limit.")
+                        logging.warning(f"{repo_key}; IndexError when getting batch start or end revisions for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
+
 
                 if batch_start_revision and batch_end_revision:
 
@@ -492,44 +484,62 @@ def clone_svn_repos():
             except Exception as exception:
 
                 # Log a warning if this fails, and run the fetch without the --revision arg
-                logging.warning(f"Failed to get batch start or end revision for repo {repo_key} and batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
+                logging.warning(f"{repo_key}; failed to get batch start or end revision for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
 
         # Start the fetch
         cmd_run_git_svn_fetch_string_may_have_batch_range = ' '.join(cmd_run_git_svn_fetch)
-        logging.info(f"Fetching SVN repo {repo_key} with {cmd_run_git_svn_fetch_string_may_have_batch_range}")
+        logging.info(f"{repo_key}; fetching with {cmd_run_git_svn_fetch_string_may_have_batch_range}")
         multiprocessing.Process(target=subprocess_run, name=f"subprocess_run({cmd_run_git_svn_fetch})", args=(cmd_run_git_svn_fetch, password, password)).start()
 
 
-def redact_password_from_list(args, password=None):
+def redact_password(args, password=None):
 
-    # AttributeError: 'list' object has no attribute 'replace'
-    # Need to iterate through strings in list
-    args_without_password = []
+    if password == None:
 
-    if password:
-
-        for arg in args:
-
-            if password in arg:
-
-                arg = arg.replace(password, "REDACTED-PASSWORD")
-
-            args_without_password.append(arg)
+        args_without_password = args
 
     else:
-        args_without_password = args.copy()
+
+        if isinstance(args, list):
+
+            # AttributeError: 'list' object has no attribute 'replace'
+            # Need to iterate through strings in list
+            args_without_password = []
+            for arg in args:
+
+                if password in arg:
+
+                    arg = arg.replace(password, "REDACTED-PASSWORD")
+
+                args_without_password.append(arg)
+
+        elif isinstance(args, str):
+
+            if password in arg:
+                args_without_password = arg.replace(password, "REDACTED-PASSWORD")
+
+        elif isinstance(args, dict):
+
+            for key in args.keys():
+
+                if password in args[key]:
+                    args[key] = args[key].replace(password, "REDACTED-PASSWORD")
+
+            args_without_password = args
+
+        else:
+
+            logging.error(f"redact_password() doesn't handle args of type {type(args)}")
+            args_without_password = None
 
     return args_without_password
 
 
 def subprocess_run(args, password=None, echo_password=None):
 
-    # Redact passwords for logging
-    # Convert to string because that's all we're using it for anyway
-    args_without_password_string = ' '.join(redact_password_from_list(args, password))
-    subprocess_stdout_and_stderr_without_password = None
-    subprocess_stdout_without_password = None
-    subprocess_stderr_without_password = None
+    subprocess_output_to_log    = None
+    subprocess_stdout_to_return = None
+    subprocess_stderr_to_check  = None
 
     try:
 
@@ -542,71 +552,78 @@ def subprocess_run(args, password=None, echo_password=None):
             text    = True,
         )
 
-        logging.debug(f"pid {subprocess_to_run.pid} started: {args_without_password_string}; {subprocess_to_run}")
+        # Get the process attributes from the OS
+        process_dict = subprocess_to_run.as_dict()
 
-        # Add it to the dict so we can use the commands to identify the PID later
-        child_processes_list_dict[subprocess_to_run.pid] = args_without_password_string
+        # Redact passwords for logging
+        process_dict = redact_password(process_dict, password)
+
+        # Log a starting message
+        status_message = "started"
+        print_process_status(process_dict, status_message)
 
         # If password is provided to this function, feed it into the subprocess' stdin pipe
         # communicate() also waits for the process to finish
         if echo_password:
-            subprocess_stdout_and_stderr = subprocess_to_run.communicate(password)
+            subprocess_output = subprocess_to_run.communicate(password)
 
         else:
-            subprocess_stdout_and_stderr = subprocess_to_run.communicate()
+            subprocess_output = subprocess_to_run.communicate()
 
-        # By now, the subprocess should be finished
-        process_clock_time_seconds = time.time() - subprocess_to_run.create_time()
-        process_clock_time_formatted = time.strftime("%H:%M:%S", time.localtime(process_clock_time_seconds))
+        # Redact password from output for logging
+        subprocess_output_to_log = redact_password(subprocess_output[0].splitlines(), password)
+        subprocess_output_to_log_backup = subprocess_output_to_log.copy()
 
-        # Capture the output in a list
-        subprocess_stdout_and_stderr_list = subprocess_stdout_and_stderr[0].splitlines()
+        # If the output is longer than max_output_total_characters, it's probably just a list of all files converted, so truncate it
+        max_output_total_characters = 1000
+        max_output_line_characters  = 100
+        max_output_lines            = 10
 
-        # If the output is longer than max_output_characters, it's probably just a list of all files converted, so truncate it
-        max_output_characters = 10000
-        max_output_line_length = 1000
-        max_output_lines = 20
-
-        if len(str(subprocess_stdout_and_stderr_list)) > max_output_characters:
+        if len(str(subprocess_output_to_log)) > max_output_total_characters:
 
             # If the output list is longer than max_output_lines lines, truncate it
-            subprocess_stdout_and_stderr_list = subprocess_stdout_and_stderr_list[-max_output_lines:]
-            subprocess_stdout_and_stderr_list.append(f"...OUTPUT TRUNCATED TO {max_output_lines} LINES")
+            subprocess_output_to_log = subprocess_output_to_log[-max_output_lines:]
+            subprocess_output_to_log.append(f"...LOG OUTPUT TRUNCATED TO {max_output_lines} LINES")
 
             # Truncate really long lines
-            for i in range(len(subprocess_stdout_and_stderr_list)):
+            for i in range(len(subprocess_output_to_log)):
 
-                if len(subprocess_stdout_and_stderr_list[i]) > max_output_line_length:
-                    subprocess_stdout_and_stderr_list[i] = textwrap.shorten(subprocess_stdout_and_stderr_list[i], width=max_output_line_length, placeholder=f"...LINE TRUNCATED TO {max_output_line_length} CHARACTERS")
-
-        # Redact passwords for logging
-        subprocess_stdout_and_stderr_without_password = redact_password_from_list(subprocess_stdout_and_stderr_list, password)
+                if len(subprocess_output_to_log[i]) > max_output_line_characters:
+                    subprocess_output_to_log[i] = textwrap.shorten(subprocess_output_to_log[i], width=max_output_line_characters, placeholder=f"...LOG LINE TRUNCATED TO {max_output_line_characters} CHARACTERS")
 
         # If the process exited successfully
         if subprocess_to_run.returncode == 0:
 
-            subprocess_stdout_without_password = subprocess_stdout_and_stderr_without_password
-            logging.debug(f"pid {subprocess_to_run.pid} succeeded after {process_clock_time_formatted}: {args_without_password_string}; {subprocess_to_run} with stdout: {subprocess_stdout_without_password}")
+            # Assign the function return value, so the function doesn't return None
+            # Create a separate list for the stdout content, so we can log a truncated version, without changing the content for the return value
+            subprocess_stdout_to_return = subprocess_output_to_log_backup.copy()
+
+            status_message = "succeeded"
+            print_process_status(process_dict, status_message, subprocess_output_to_log)
 
         else:
 
-            subprocess_stderr_without_password = subprocess_stdout_and_stderr_without_password
-            logging.error(f"pid {subprocess_to_run.pid} failed after {process_clock_time_formatted}: {args_without_password_string}; {subprocess_to_run} with stderr: {subprocess_stderr_without_password}")
+            subprocess_stderr_to_check = subprocess_output_to_log
+
+            status_message = "failed"
+            print_process_status(process_dict, status_message, subprocess_stderr_to_check, log_level = logging.ERROR)
 
     except subprocess.CalledProcessError as exception:
 
-            logging.error(f"pid {subprocess_to_run.pid} raised exception after {process_clock_time_formatted}: {args_without_password_string}; {subprocess_to_run} with exception: {type(exception)}, {exception.args}, {exception}")
+            status_message = f"raised an exception: {type(exception)}, {exception.args}, {exception}"
+            print_process_status(process_dict, status_message, subprocess_output_to_log, log_level = logging.ERROR)
 
 
-    if subprocess_stderr_without_password:
+    if subprocess_stderr_to_check:
 
+        # May need to make this more generic Git for all repo conversions
         # Handle the case of abandoned git svn lock files blocking fetch processes
         # We already know that no other git svn fetch processes are running, because we checked for that before spawning this fetch process
         # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/wsl/zest/.git/svn/refs/remotes/git-svn/index.lock': File exists.  Another git process seems to be running in this repository, e.g. an editor opened by 'git commit'. Please make sure all processes are terminated then try again. If it still fails, a git process may have crashed in this repository earlier: remove the file manually to continue. write-tree: command returned error: 128
         lock_file_error_strings = ["Unable to create", "index.lock", "File exists"]
 
         # Handle this as a string,
-        stderr_without_password_string = " ".join(subprocess_stderr_without_password)
+        stderr_without_password_string = " ".join(subprocess_stderr_to_check)
         lock_file_error_conditions = (lock_file_error_string in stderr_without_password_string for lock_file_error_string in lock_file_error_strings)
         if all(lock_file_error_conditions):
 
@@ -615,11 +632,10 @@ def subprocess_run(args, password=None, echo_password=None):
                 # Get the index.lock file path from stderr_without_password_string
                 lock_file_path = stderr_without_password_string.split("Unable to create '")[1].split("': File exists.")[0]
 
-                logging.warning(f"Fetch failed to start due to finding a lockfile in repo at {lock_file_path}. Deleting the lockfile so it'll try again on the next run.")
+                logging.warning(f"Fetch failed to start due to finding a lockfile in repo at {lock_file_path}, but no fetch process running for this repo, deleting the lockfile so it'll try again on the next run")
 
                 # Careful with recursive function call, don't create infinite recursion and fork bomb the container
-                if subprocess_run(["rm", "-f", lock_file_path]):
-                    logging.info(f"Successfully deleted {lock_file_path}")
+                subprocess_run(["rm", "-f", lock_file_path])
 
             except subprocess.CalledProcessError as exception:
                 logging.error(f"Failed to rm -f lockfile at {lock_file_path} with exception: {type(exception)}, {exception.args}, {exception}")
@@ -627,7 +643,7 @@ def subprocess_run(args, password=None, echo_password=None):
             except ValueError as exception:
                 logging.error(f"Failed to find git execution path in command args while trying to delete {lock_file_path} with exception: {type(exception)}, {exception.args}, {exception}")
 
-    return subprocess_stdout_without_password
+    return subprocess_stdout_to_return
 
 
 def clone_tfs_repos():
@@ -649,14 +665,13 @@ def clone_tfs_repos():
     # logging.info("Cloning TFS repos" + str(tfs_repos_dict))
 
 
-
 def clone_git_repos():
     logging.warning("Cloning Git repos function not implemented yet")
 
 
 def status_update_and_cleanup_zombie_processes():
 
-    # The current approach should return the same list of processes as just ps -ef, but may be more flexible
+    # The current approach should return the same list of processes as just ps -ef when a Docker container runs this script as the CMD (pid 1)
 
     # Get the current process ID, should be 1 in Docker
     os_this_pid = os.getpid()
@@ -693,36 +708,84 @@ def status_update_and_cleanup_zombie_processes():
         # Raises an exception
     for process_pid_to_wait_for in process_pids_to_wait_for:
 
-        try:
+        status_message = ""
+        process_to_wait_for = None
 
-            # Check if this PID is one we've stored a command for
-            process_command = child_processes_list_dict.get(process_pid_to_wait_for, "")
+        try:
 
             # Create an instance of a Process object for the PID number
             # Raises psutil.NoSuchProcess if the PID has already finished
             process_to_wait_for = psutil.Process(process_pid_to_wait_for)
 
-            process_clock_time_seconds = time.time() - process_to_wait_for.create_time()
-            process_clock_time_formatted = time.strftime("%H:%M:%S", time.localtime(process_clock_time_seconds))
-
             # This rarely fires, ex. if cleaning up processes at the beginning of a script execution and the process finished during the interval
             if process_to_wait_for.status() == psutil.STATUS_ZOMBIE:
-                logging.debug(f"pid {process_pid_to_wait_for} is a zombie after {process_clock_time_formatted}: {process_command} {process_to_wait_for}")
+                status_message = "is a zombie"
+
+            # Get the process attributes from the OS
+            process_dict = process_to_wait_for.as_dict()
 
             # Wait a short period, and capture the return status
             # Raises psutil.TimeoutExpired if the process is busy executing longer than the wait time
             return_status = process_to_wait_for.wait(0.1)
-
-            logging.debug(f"pid {process_pid_to_wait_for} finished now after {process_clock_time_formatted}: {process_command} {process_to_wait_for} with return status: {return_status}")
+            status_message = f"finished with return status: {str(return_status)}"
 
         except psutil.NoSuchProcess as exception:
-            logging.debug(f"pid {process_pid_to_wait_for} already finished after {process_clock_time_formatted}: {process_command} {process_to_wait_for}")
+            status_message = "finished on wait"
 
         except psutil.TimeoutExpired as exception:
-            logging.debug(f"pid {process_pid_to_wait_for} is still running after {process_clock_time_formatted}: {process_command} {process_to_wait_for}")
+            status_message = "still running"
 
         except Exception as exception:
-            logging.debug(f"pid {process_pid_to_wait_for} raised exception while waiting after {process_clock_time_formatted}: {process_command} {process_to_wait_for} exception: {type(exception)}, {exception.args}, {exception}")
+            status_message = f"raised an exception while waiting: {type(exception)}, {exception.args}, {exception}"
+
+        finally:
+
+            print_process_status(process_dict, status_message)
+
+
+def print_process_status(process_dict = {}, status_message = "", std_out = "", log_level = logging.DEBUG):
+
+    log_message = ""
+
+    process_attributes_to_log = [
+        'status',
+        'cmdline',
+        'ppid',
+        'connections',
+        'cpu_times',
+        'num_fds',
+    ]
+
+    try:
+
+        process_dict_to_log = {key: process_dict[key] for key in process_attributes_to_log if key in process_dict}
+
+        # Calculate the running clock time
+        process_clock_time_seconds = time.time() - process_dict['create_time']
+        process_clock_time_formatted = time.strftime("%H:%M:%S", time.localtime(process_clock_time_seconds))
+
+        # Formulate the log message
+        log_message = f"pid {process_dict['pid']}; {status_message}"
+
+        if status_message != "started":
+            log_message += f"; clock time {process_clock_time_formatted}"
+
+        if std_out:
+            log_message += f"; std_out {std_out}"
+
+        log_message += f"; process_dict {process_dict_to_log}"
+
+    except psutil.NoSuchProcess as exception:
+        log_message = f"pid {process_dict['pid']}; finished on status check"
+
+    except Exception as exception:
+        log_level   = logging.ERROR
+        exception_string = " ".join(traceback.format_exception(exception)).replace("\n", " ")
+        log_message = f"Exception raised while checking process status. Exception: {exception_string}"
+
+    finally:
+        # Log the message
+        logging.log(log_level, log_message)
 
 
 def main():
@@ -741,8 +804,7 @@ def main():
         logging.debug("Multiprocessing module using start method: " + multiprocessing.get_start_method())
         status_update_and_cleanup_zombie_processes()
 
-        cmd_cfg_git_safe_directory = ["git", "config", "--system", "--add", "safe.directory", "\"*\""]
-        subprocess_run(cmd_cfg_git_safe_directory)
+        git_config_safe_directory()
 
         parse_repos_to_convert_file_into_repos_dict()
         clone_svn_repos()
