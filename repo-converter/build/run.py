@@ -332,6 +332,11 @@ def clone_svn_repos():
 
                 repo_state = "update"
 
+        except TypeError as exception:
+            # Get an error when trying to git config --get svn-remote.svn.url, when the directory doesn't exist on disk
+            # WARNING; karaf; failed to check git config --get svn-remote.svn.url. Exception: <class 'TypeError'>, ("'NoneType' object is not subscriptable",), 'NoneType' object is not subscriptable
+            pass
+
         except Exception as exception:
             logging.warning(f"{repo_key}; failed to check git config --get svn-remote.svn.url. Exception: {type(exception)}, {exception.args}, {exception}")
 
