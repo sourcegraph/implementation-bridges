@@ -231,7 +231,7 @@ def clone_svn_repo(repo_key):
     branches                    = repos_dict[repo_key].get("branches", None)
     code_host_name              = repos_dict[repo_key].get("code-host-name", None)
     fetch_batch_size            = repos_dict[repo_key].get("fetch-batch-size", 100)
-    git_default_branch          = repos_dict[repo_key].get("git-default-branch","main")
+    git_default_branch          = repos_dict[repo_key].get("git-default-branch","trunk")
     git_ignore_file_path        = repos_dict[repo_key].get("git-ignore-file-path", None)
     git_org_name                = repos_dict[repo_key].get("git-org-name", None)
     layout                      = repos_dict[repo_key].get("layout", None)
@@ -641,7 +641,11 @@ def clone_svn_repo(repo_key):
         cmd_git_set_batch_end_revision.append(str(batch_end_revision))
         subprocess_run(cmd_git_set_batch_end_revision)
 
-#    clean_remote_branches(local_repo_path)
+    clean_remote_branches(local_repo_path)
+
+    # Set default branch
+    # git symbolic-ref HEAD refs/heads/trunk
+    # git symbolic-ref HEAD refs/heads/{git_default_branch}
 
 
 def clean_remote_branches(local_repo_path):
@@ -677,40 +681,40 @@ def clean_remote_branches(local_repo_path):
         (" refs/remotes/origin/"        , " refs/heads/"    )
     ]
 
-    # The .git/packed-refs file only exists if git gc found stuff to pack into it
-    if os.path.exists(packed_refs_file_path):
+    # # The .git/packed-refs file only exists if git gc found stuff to pack into it
+    # if os.path.exists(packed_refs_file_path):
 
-        # Take a backup, so we can compare before and after
-        shutil.copy2(packed_refs_file_path, packed_refs_file_backup_path)
+    #     # Take a backup, so we can compare before and after
+    #     shutil.copy2(packed_refs_file_path, packed_refs_file_backup_path)
 
-        with open(packed_refs_file_path, "r") as packed_refs_file:
+    #     with open(packed_refs_file_path, "r") as packed_refs_file:
 
-            read_lines = packed_refs_file.readlines()
-            for read_line in read_lines:
-                logging.debug(f"Contents of {packed_refs_file_path} before cleanup: {read_line}")
+    #         read_lines = packed_refs_file.readlines()
+    #         for read_line in read_lines:
+    #             logging.debug(f"Contents of {packed_refs_file_path} before cleanup: {read_line}")
 
-        with open(packed_refs_file_path, "r") as packed_refs_file:
+    #     with open(packed_refs_file_path, "r") as packed_refs_file:
 
-            packed_refs_file_content = packed_refs_file.read()
+    #         packed_refs_file_content = packed_refs_file.read()
 
-        with open(packed_refs_file_path, "w") as packed_refs_file:
+    #     with open(packed_refs_file_path, "w") as packed_refs_file:
 
-            # Ensure the string replacements are done in the correct order
-            for string_replacement in string_replacements:
+    #         # Ensure the string replacements are done in the correct order
+    #         for string_replacement in string_replacements:
 
-                packed_refs_file_content = packed_refs_file_content.replace(string_replacement[0], string_replacement[1])
+    #             packed_refs_file_content = packed_refs_file_content.replace(string_replacement[0], string_replacement[1])
 
-            packed_refs_file.write(packed_refs_file_content)
+    #         packed_refs_file.write(packed_refs_file_content)
 
-        with open(packed_refs_file_path, "r") as packed_refs_file:
+    #     with open(packed_refs_file_path, "r") as packed_refs_file:
 
-            read_lines = packed_refs_file.readlines()
-            for read_line in read_lines:
-                logging.debug(f"Contents of {packed_refs_file_path} after cleanup: {read_line}")
+    #         read_lines = packed_refs_file.readlines()
+    #         for read_line in read_lines:
+    #             logging.debug(f"Contents of {packed_refs_file_path} after cleanup: {read_line}")
 
-    else:
+    # else:
 
-        logging.debug(f"No git packed-refs file to fix branches and tags, at {packed_refs_file_path}")
+    #     logging.debug(f"No git packed-refs file to fix branches and tags, at {packed_refs_file_path}")
 
 
 
