@@ -13,9 +13,14 @@ log_file="$repo_converter_dir/pull-start.log"
 date_time=$(date +"%F %T")
 echo "$date_time - Starting $0" >> "$log_file"
 
-command="git -C $repo_converter_dir pull && docker compose -f $repo_converter_dir/docker-compose.yaml pull && docker compose -f $repo_converter_dir/docker-compose.yaml up -d --remove-orphans"
+command="\
+    sudo git -C $repo_converter_dir reset --hard                                            && \
+    sudo git -C $repo_converter_dir pull --force                                            && \
+    sudo docker compose -f $repo_converter_dir/docker-compose.yaml pull                     && \
+    sudo docker compose -f $repo_converter_dir/docker-compose.yaml up -d --remove-orphans      \
+    "
 
-bash -c "$command" >> "$log_file" 2>&1
+sudo bash -c "$command" 2>&1 | sudo tee -a file "$log_file"
 
 date_time=$(date +"%F %T")
 echo "$date_time - Finishing $0" >> "$log_file"
