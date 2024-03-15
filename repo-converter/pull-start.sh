@@ -20,7 +20,7 @@ command="\
     sudo docker compose -f $repo_converter_dir/docker-compose.yaml up -d --remove-orphans      \
     "
 
-sudo bash -c "$command" 2>&1 | sudo tee -a file "$log_file"
+bash -c "$command" >> "$log_file" 2>&1
 
 date_time=$(date +"%F %T")
 echo "$date_time - Finishing $0" >> "$log_file"
