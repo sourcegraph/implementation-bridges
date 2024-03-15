@@ -41,6 +41,8 @@
 
         # Test layout tags and branches as lists / arrays
 
+        # Run git svn log --xml to store the repo's log on disk, then append to it when there are new revisions, so getting counts of revisions in each repo is slow once, fast many times
+
 ### Notes:
 
     # psutil requires adding gcc to the Docker image build, which adds 4 minutes to the build time, and doubles the image size
@@ -212,7 +214,7 @@ def clone_svn_repos():
     # Loop through the repos_dict, find the type: SVN repos, then fork off a process to clone them
     for repo_key in repos_dict.keys():
 
-        repo_type = repos_dict[repo_key].get('type','').lower()
+        repo_type = repos_dict[repo_key].get("type","").lower()
 
         if "svn" in repo_type or "subversion" in repo_type:
 
@@ -223,20 +225,21 @@ def clone_svn_repo(repo_key):
 
     # Get config parameters read from repos-to-clone.yaml, and set defaults if they're not provided
     git_repo_name               = repo_key
-    authors_file_path           = repos_dict[repo_key].get('authors-file-path', None)
-    authors_prog_path           = repos_dict[repo_key].get('authors-prog-path', None)
-    branches                    = repos_dict[repo_key].get('branches', None)
-    code_host_name              = repos_dict[repo_key].get('code-host-name', None)
-    fetch_batch_size            = repos_dict[repo_key].get('fetch-batch-size', 100)
-    git_default_branch          = repos_dict[repo_key].get('git-default-branch','main')
-    git_ignore_file_path        = repos_dict[repo_key].get('git-ignore-file-path', None)
-    git_org_name                = repos_dict[repo_key].get('git-org-name', None)
-    layout                      = repos_dict[repo_key].get('layout', None)
-    password                    = repos_dict[repo_key].get('password', None)
-    svn_remote_repo_code_root   = repos_dict[repo_key].get('svn-repo-code-root', None)
-    tags                        = repos_dict[repo_key].get('tags', None)
-    trunk                       = repos_dict[repo_key].get('trunk', None)
-    username                    = repos_dict[repo_key].get('username', None)
+    authors_file_path           = repos_dict[repo_key].get("authors-file-path", None)
+    authors_prog_path           = repos_dict[repo_key].get("authors-prog-path", None)
+    bare_clone                  = repos_dict[repo_key].get("bare-clone", True)
+    branches                    = repos_dict[repo_key].get("branches", None)
+    code_host_name              = repos_dict[repo_key].get("code-host-name", None)
+    fetch_batch_size            = repos_dict[repo_key].get("fetch-batch-size", 100)
+    git_default_branch          = repos_dict[repo_key].get("git-default-branch","main")
+    git_ignore_file_path        = repos_dict[repo_key].get("git-ignore-file-path", None)
+    git_org_name                = repos_dict[repo_key].get("git-org-name", None)
+    layout                      = repos_dict[repo_key].get("layout", None)
+    password                    = repos_dict[repo_key].get("password", None)
+    svn_remote_repo_code_root   = repos_dict[repo_key].get("svn-repo-code-root", None)
+    tags                        = repos_dict[repo_key].get("tags", None)
+    trunk                       = repos_dict[repo_key].get("trunk", None)
+    username                    = repos_dict[repo_key].get("username", None)
 
     ## Parse config parameters into command args
     # TODO: Interpret code_host_name, git_org_name, and git_repo_name if not given
@@ -335,10 +338,10 @@ def clone_svn_repo(repo_key):
         # In priority order
         concurrency_error_strings_and_messages = [
             (process_name,                  "previous process still running"         ),
-            (cmd_git_svn_fetch_string,  "previous fetching process still running"),
-            (cmd_svn_log_string,        "previous svn log process still running" ),
-            (local_repo_path,               "local repo path in process running"     ),
-            (svn_remote_repo_code_root,     "repo url in process running"            ),
+            (cmd_git_svn_fetch_string,      "previous fetching process still running"),
+            (cmd_svn_log_string,            "previous svn log process still running" ),
+            (local_repo_path,               "local repo path in process running"     ), # Problem: if one repo's name is a substring of another repo's name
+            # (svn_remote_repo_code_root,     "repo url in process running"            ), # Problem: Multiple clones from the same URL
         ]
 
         # Loop through the list of strings we're looking for, to check the running processes for each of them
@@ -349,7 +352,7 @@ def clone_svn_repo(repo_key):
 
                 # Find which process it's in
                 for running_process in running_processes:
-                    pid, args = running_process.lstrip().split(' ', 1)
+                    pid, args = running_process.lstrip().split(" ", 1)
 
                     # If it's this process, and this process hasn't already matched one of the previous concurrency errors
                     if (
@@ -534,7 +537,8 @@ def clone_svn_repo(repo_key):
         # Configure the bare clone
         # Testing without the bare clone to see if branching works easier
         # and because I forget why a bare clone was needed
-        # subprocess_run(cmd_git_bare_clone)
+        if bare_clone:
+            subprocess_run(cmd_git_bare_clone)
 
 
     ## Back to steps we do for both Create and Update states, so users can update the below parameters without having to restart the clone from scratch
@@ -603,7 +607,10 @@ def clone_svn_repo(repo_key):
                 batch_end_revision = int(" ".join(cmd_svn_log_batch_end_revision_output).split("revision=\"")[1].split("\"")[0])
 
             except IndexError as exception:
-                logging.warning(f"{repo_key}; IndexError when getting batch start or end revisions for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
+                logging.warning(f"{repo_key}; IndexError when getting batch start or end revisions for batch size {fetch_batch_size}, skipping this run to retry next run")
+                return
+
+                # logging.warning(f"{repo_key}; IndexError when getting batch start or end revisions for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
                 #  <class 'IndexError'>, ('list index out of range',), list index out of range
                 # Need to handle the issue where revisions seem to be out of order on the server
 
@@ -617,10 +624,13 @@ def clone_svn_repo(repo_key):
     except Exception as exception:
 
         # Log a warning if this fails, and run the fetch without the --revision arg
-        logging.warning(f"{repo_key}; failed to get batch start or end revision for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
+        # logging.warning(f"{repo_key}; failed to get batch start or end revision for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
+
+        logging.warning(f"{repo_key}; failed to get batch start or end revision for batch size {fetch_batch_size}; skipping this run to retry next run; exception: {type(exception)}, {exception.args}, {exception}")
+        return
 
     # Start the fetch
-    cmd_git_svn_fetch_string_may_have_batch_range = ' '.join(cmd_git_svn_fetch)
+    cmd_git_svn_fetch_string_may_have_batch_range = " ".join(cmd_git_svn_fetch)
     logging.info(f"{repo_key}; fetching with {cmd_git_svn_fetch_string_may_have_batch_range}")
     git_svn_fetch_result = subprocess_run(cmd_git_svn_fetch, password, password)
 
@@ -631,38 +641,43 @@ def clone_svn_repo(repo_key):
         cmd_git_set_batch_end_revision.append(str(batch_end_revision))
         subprocess_run(cmd_git_set_batch_end_revision)
 
+    clean_remote_branches(local_repo_path)
 
-def clean_remote_branches():
 
-    cmd_git_get_branches = ["git", "branch", "-ra"]
-    subprocess_run(cmd_git_get_branches)
+def clean_remote_branches(local_repo_path):
 
-# #    From https://github.com/cjwilburn/svn-migration-scripts/blob/5c50dddf7f2d7c0bf6971985f6b1f018821732b4/src/main/scala/Branches.scala#L28C1-L52C8
-#     git.forEachRefFull("refs/remotes/")
-#       .filterNot(_ startsWith "refs/remotes/tags")
-#       .foreach {
-#         branch_ref =>
-#           // delete the "refs/remotes/" prefix
-#           val branch = branch_ref stripPrefix "refs/remotes/"
+    cmd_git_garbage_collection  = ["git", "-C", local_repo_path, "gc", "--auto"]
 
-#           // create a local branch ref only if it's not trunk (which is already mapped to master)
-#           // and if it is not an intermediate branch (ex: foo@42)
-#           if (branch != "trunk" && !git.isIntermediateRef(branch)) {
-#             println("Creating the local branch '%s' for Subversion branch '%s'.".format(branch, branch_ref))
-#             if (options.shouldCreate) {
-#               git("git", "branch", "-f", branch, branch_ref).!
-#               if (branch.length > 120) {
-#                 printerr("WARNING: Branch %s is too long and cannot be tracked" format (branch))
-#               } else {
-#                 // Since Git 1.8.4 you can't track non-remote refs
-#                 // https://github.com/git/git/commit/41c21f22d0fc06f1f22489621980396aea9f7a62
-#                 // Manually add the tracking to be used by SyncRebase
-#                 // Note that the branch and merge can be different due to us 'cleaning' the names in fixNames()
-#                 git("git", "config", "branch." + branch + ".merge", branch_ref) !
-#               }
-#             }
-#           }
-#       }
+    packed_refs_file            = f"{local_repo_path}/.git/packed-refs"
+    cmd_sed_tags                = ["sed", "-i.backup", "'s/\ refs\/remotes\/origin\/tags\//\ refs\/tags\//g'"   , packed_refs_file]
+    cmd_sed_branches            = ["sed", "-i.backup", "'s/\ refs\/remotes\/origin\//\ refs\/heads\//g'"        , packed_refs_file]
+
+    clean_remote_branch_commands = [
+        cmd_git_garbage_collection,
+        cmd_sed_tags,
+        cmd_sed_branches
+    ]
+
+    for clean_remote_branch_command in clean_remote_branch_commands:
+        subprocess_run(clean_remote_branch_command)
+
+    # # Run git gc --auto
+    # # This packs everything from the directory tree into .git/packed-refs
+
+    # # Edit .git/packed-refs
+    # # Find
+    # refs/remotes/origin/tags/
+    # # Replace with
+    # refs/tags/
+    # sed -i.backup 's/\ refs\/remotes\/origin\/tags\//\ refs\/tags\//g' packed-refs
+
+    # # Find
+    # refs/remotes/origin/
+    # # Replace with
+    # refs/heads/
+
+    # sed -i.backup 's/\ refs\/remotes\/origin\//\ refs\/heads\//g' packed-refs
+
 
 
 def redact_password(args, password=None):
@@ -942,17 +957,16 @@ def print_process_status(process_dict = {}, status_message = "", std_out = "", l
     log_message = ""
 
     process_attributes_to_log = [
-        'status',
-        'cmdline',
-        'ppid',
-        'connections',
-        'cpu_times',
-        'num_fds',
+        "cmdline",
+        "status",
+        "ppid",
+        "num_fds",
+        "cpu_times",
+        "connections_count",
+        "connections",
     ]
 
     try:
-
-        process_dict_to_log = {key: process_dict[key] for key in process_attributes_to_log if key in process_dict}
 
         # Formulate the log message
         log_message = f"pid {process_dict['pid']}; {status_message}"
@@ -961,12 +975,35 @@ def print_process_status(process_dict = {}, status_message = "", std_out = "", l
 
             process_clock_time_seconds = time.time() - process_dict["create_time"]
             process_clock_time_formatted = time.strftime("%H:%M:%S", time.localtime(process_clock_time_seconds))
-            log_message += f"; clock time {process_clock_time_formatted}"
+            log_message += f"; running for {process_clock_time_formatted}"
+
+        # Pick the interesting bits out of the connections list
+        # connections is usually in the dict, as a zero-length list of "pconn"-type objects, (named tuples of tuples)
+        if "connections" in process_dict.keys():
+
+            connections = process_dict["connections"]
+
+            if isinstance(connections, list):
+
+                process_dict["connections_count"] = len(process_dict["connections"])
+
+                connections_string = ""
+
+                for connection in connections:
+
+                    # raddr=addr(ip='93.186.135.91', port=80), status='ESTABLISHED'),
+                    connections_string += ":".join(map(str,connection.raddr))
+                    connections_string += ":"
+                    connections_string += connection.status
+                    connections_string += ", "
+
+                process_dict["connections"] = connections_string[:-2]
+
+        process_dict_to_log = {key: process_dict[key] for key in process_attributes_to_log if key in process_dict}
+        log_message += f"; process_dict {process_dict_to_log}"
 
         if std_out:
             log_message += f"; std_out {std_out}"
-
-        log_message += f"; process_dict {process_dict_to_log}"
 
     except psutil.NoSuchProcess as exception:
         log_message = f"pid {process_dict['pid']}; finished on status check"
