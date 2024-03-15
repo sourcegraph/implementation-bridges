@@ -641,7 +641,7 @@ def clone_svn_repo(repo_key):
         cmd_git_set_batch_end_revision.append(str(batch_end_revision))
         subprocess_run(cmd_git_set_batch_end_revision)
 
-    clean_remote_branches(local_repo_path)
+#    clean_remote_branches(local_repo_path)
 
 
 def clean_remote_branches(local_repo_path):
