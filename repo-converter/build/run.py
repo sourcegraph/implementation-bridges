@@ -646,37 +646,71 @@ def clone_svn_repo(repo_key):
 
 def clean_remote_branches(local_repo_path):
 
-    cmd_git_garbage_collection  = ["git", "-C", local_repo_path, "gc", "--auto"]
+    # Git svn and git tfs both create converted branches as remote branches, so the Sourcegraph clone doesn't show them to users
+    # Need to convert the remote branches to local branches, so Sourcegraph users can see them
 
-    packed_refs_file            = f"{local_repo_path}/.git/packed-refs"
-    cmd_sed_tags                = ["sed", "-i.backup", "'s/\ refs\/remotes\/origin\/tags\//\ refs\/tags\//g'"   , packed_refs_file]
-    cmd_sed_branches            = ["sed", "-i.backup", "'s/\ refs\/remotes\/origin\//\ refs\/heads\//g'"        , packed_refs_file]
+    # TODO: Find out how to set the default branch, or if this is already taken care of with the git conifg --global init.defaultBranch setting
 
-    clean_remote_branch_commands = [
-        cmd_git_garbage_collection,
-        cmd_sed_tags,
-        cmd_sed_branches
-    ]
+    cmd_git_garbage_collection  = ["git", "-C", local_repo_path, "gc"]
+    subprocess_run(cmd_git_garbage_collection)
 
-    for clean_remote_branch_command in clean_remote_branch_commands:
-        subprocess_run(clean_remote_branch_command)
+    # Edit .git/packed-refs
 
-    # # Run git gc --auto
-    # # This packs everything from the directory tree into .git/packed-refs
-
-    # # Edit .git/packed-refs
-    # # Find
-    # refs/remotes/origin/tags/
-    # # Replace with
-    # refs/tags/
+    # Find
+    #  refs/remotes/origin/tags/
+    # Replace with
+    #  refs/tags/
     # sed -i.backup 's/\ refs\/remotes\/origin\/tags\//\ refs\/tags\//g' packed-refs
 
-    # # Find
-    # refs/remotes/origin/
-    # # Replace with
-    # refs/heads/
-
+    # Find
+    #  refs/remotes/origin/
+    # Replace with
+    #  refs/heads/
     # sed -i.backup 's/\ refs\/remotes\/origin\//\ refs\/heads\//g' packed-refs
+
+
+    packed_refs_file_path           = f"{local_repo_path}/.git/packed-refs"
+    packed_refs_file_backup_path    = f"{packed_refs_file_path}-backup"
+
+    string_replacements = [
+        (" refs/remotes/origin/tags/"   , " refs/tags/"     ),
+        (" refs/remotes/origin/"        , " refs/heads/"    )
+    ]
+
+    # The .git/packed-refs file only exists if git gc found stuff to pack into it
+    if os.path.exists(packed_refs_file_path):
+
+        # Take a backup, so we can compare before and after
+        shutil.copy2(packed_refs_file_path, packed_refs_file_backup_path)
+
+        with open(packed_refs_file_path, "r") as packed_refs_file:
+
+            read_lines = packed_refs_file.readlines()
+            for read_line in read_lines:
+                logging.debug(f"Contents of {packed_refs_file_path} before cleanup: {read_line}")
+
+        with open(packed_refs_file_path, "r") as packed_refs_file:
+
+            packed_refs_file_content = packed_refs_file.read()
+
+        with open(packed_refs_file_path, "w") as packed_refs_file:
+
+            # Ensure the string replacements are done in the correct order
+            for string_replacement in string_replacements:
+
+                packed_refs_file_content = packed_refs_file_content.replace(string_replacement[0], string_replacement[1])
+
+            packed_refs_file.write(packed_refs_file_content)
+
+        with open(packed_refs_file_path, "r") as packed_refs_file:
+
+            read_lines = packed_refs_file.readlines()
+            for read_line in read_lines:
+                logging.debug(f"Contents of {packed_refs_file_path} after cleanup: {read_line}")
+
+    else:
+
+        logging.debug(f"No git packed-refs file to fix branches and tags, at {packed_refs_file_path}")
 
 
 
