@@ -43,6 +43,10 @@
 
         # Run git svn log --xml to store the repo's log on disk, then append to it when there are new revisions, so getting counts of revisions in each repo is slow once, fast many times
 
+    # Other
+
+        # Read environment variables from repos-to-convert.yaml, so the values can be changed without restarting the container
+
 ### Notes:
 
     # psutil requires adding gcc to the Docker image build, which adds 4 minutes to the build time, and doubles the image size
@@ -64,13 +68,6 @@
         # java -jar /sourcegraph/svn-migration-scripts.jar authors https://svn.apache.org/repos/asf/eagle > authors.txt
         # Kinda useful, surprisingly fast
 
-    # git gc
-        # Should be automatic?
-        # Run the one from Atlassian's Jar file if needed
-
-    # git default branch for init / initial clone
-        # Find a way to configure it for each repo, before or after git init, so that it doesn't need to be set globally, risk collisions
-
     # git list all config
         # git -C $local_repo_path config --list
 
@@ -90,6 +87,7 @@ import logging                                              # https://docs.pytho
 import multiprocessing                                      # https://docs.python.org/3/library/multiprocessing.html
 import os                                                   # https://docs.python.org/3/library/os.html
 import random                                               # https://docs.python.org/3/library/random.html
+import re                                                   # https://docs.python.org/3/library/re.html
 import shutil                                               # https://docs.python.org/3/library/shutil.html
 import signal                                               # https://docs.python.org/3/library/signal.html
 import subprocess                                           # https://docs.python.org/3/library/subprocess.html
@@ -136,12 +134,12 @@ def load_config_from_environment_variables():
     # Set defaults in case they're not defined
 
     # DEBUG INFO WARNING ERROR CRITICAL
-    environment_variables_dict["LOG_LEVEL"]                         = os.environ.get("LOG_LEVEL", "DEBUG")
+    environment_variables_dict["LOG_LEVEL"]                         = str(os.environ.get("LOG_LEVEL",                       "INFO"))
     environment_variables_dict["REPO_CONVERTER_INTERVAL_SECONDS"]   = int(os.environ.get("REPO_CONVERTER_INTERVAL_SECONDS", 3600))
     # Path inside the container to find this file, only change to match if the right side of the volume mapping changes
-    environment_variables_dict["REPOS_TO_CONVERT"]                  = os.environ.get("REPOS_TO_CONVERT", "/sourcegraph/repos-to-convert.yaml")
+    environment_variables_dict["REPOS_TO_CONVERT"]                  = str(os.environ.get("REPOS_TO_CONVERT",                "/sourcegraph/repos-to-convert.yaml"))
     # Path inside the container to find this directory, only change to match if the right side of the volume mapping changes
-    environment_variables_dict["SRC_SERVE_ROOT"]                    = os.environ.get("SRC_SERVE_ROOT", "/sourcegraph/src-serve-root")
+    environment_variables_dict["SRC_SERVE_ROOT"]                    = str(os.environ.get("SRC_SERVE_ROOT",                  "/sourcegraph/src-serve-root"))
 
 
 def load_config_from_repos_to_convert_file():
@@ -176,7 +174,7 @@ def parse_repos_to_convert_file_into_repos_dict():
     # The Python runtime seems to require this to get specified
     global repos_dict
 
-    # Clear the dict for this execution to remove repos which have been removed from the yaml file
+    # Clear the dict for this execution to ignore repos which have been removed from the yaml file
     repos_dict.clear()
 
     # Parse the repos-to-convert.yaml file
@@ -187,16 +185,6 @@ def parse_repos_to_convert_file_into_repos_dict():
 
             # This should return a dict
             repos_dict = yaml.safe_load(repos_to_convert_file)
-            # code_hosts_list_temp = yaml.safe_load(repos_to_convert_file)
-
-            # # Weird thing we have to do
-            # # Reading directory into repos_dict doesn't persist the dict outside the function
-            # for repo_dict_key in code_hosts_list_temp.keys():
-
-            #     # Store the repo_dict_key in the repos_dict
-            #     repos_dict[repo_dict_key] = code_hosts_list_temp[repo_dict_key]
-
-            logging.info(f"Parsed {len(repos_dict)} repos from {environment_variables_dict['REPOS_TO_CONVERT']}")
 
     except FileNotFoundError:
 
@@ -207,6 +195,123 @@ def parse_repos_to_convert_file_into_repos_dict():
 
         logging.error(f"Invalid YAML file format in {environment_variables_dict['REPOS_TO_CONVERT']}, please check the structure matches the format in the README.md. Exception: {type(exception)}, {exception.args}, {exception}")
         sys.exit(2)
+
+    logging.info(f"Parsed {len(repos_dict)} repos from {environment_variables_dict['REPOS_TO_CONVERT']}")
+
+    repos_dict = sanitize_inputs(repos_dict)
+
+
+def sanitize_inputs(input_value, input_key="", recursed=False):
+
+    # logging.info(f"sanitize_inputs; starting; type(input_key): {type(input_key)}, input_key: {input_key}, type(input_value): {type(input_value)}, input_value: {input_value}, recursed: {recursed}")
+
+    # Take in the repos_dict
+    # DFS traverse the dictionary
+    # Get the key:value pairs
+    # Convert the keys to strings
+    # Validate / convert the value types
+
+    # The inputs that have specific type requirements
+    # Dictionary of tuples
+    input_value_types_dict = {}
+    input_value_types_dict[ "authors-file-path"     ] = (str,           )
+    input_value_types_dict[ "authors-prog-path"     ] = (str,           )
+    input_value_types_dict[ "bare-clone"            ] = (bool,          )
+    input_value_types_dict[ "branches"              ] = (str, list      )
+    input_value_types_dict[ "code-host-name"        ] = (str,           )
+    input_value_types_dict[ "fetch-batch-size"      ] = (int,           )
+    input_value_types_dict[ "git-default-branch"    ] = (str,           )
+    input_value_types_dict[ "git-ignore-file-path"  ] = (str,           )
+    input_value_types_dict[ "git-org-name"          ] = (str,           )
+    input_value_types_dict[ "layout"                ] = (str,           )
+    input_value_types_dict[ "password"              ] = (str,           )
+    input_value_types_dict[ "svn-repo-code-root"    ] = (str,           )
+    input_value_types_dict[ "tags"                  ] = (str, list      )
+    input_value_types_dict[ "trunk"                 ] = (str,           )
+    input_value_types_dict[ "type"                  ] = (str,           )
+    input_value_types_dict[ "username"              ] = (str,           )
+
+
+    if isinstance(input_value, dict):
+
+        # logging.info(f"sanitize_inputs(): received dict with key: {input_key} and dict: {input_value}")
+
+        output = {}
+
+        for input_value_key in input_value.keys():
+
+            # logging.info(f"sanitize_inputs(): key   type: {type(input_key)}; key: {input_key}")
+            # logging.info(f"sanitize_inputs(): value type: {type(input[input_key])}; value: {input[input_key]}")
+
+            # Convert the key to a string
+            output_key = str(input_value_key)
+
+            # Recurse back into this function to handle the values of this dict
+            output[output_key] = sanitize_inputs(input_value[input_value_key], input_value_key, True)
+
+    # If this function was called with a list
+    elif isinstance(input_value, list):
+
+        # logging.info(f"sanitize_inputs(): received list with key: {input_key} and list: {input_value}")
+
+        output = []
+
+        for input_list_item in input_value:
+
+            # logging.info(f"sanitize_inputs(): type(input_list_item): {type(input_list_item)}; input_list_item: {input_list_item}")
+
+            # Recurse back into this function to handle the values of this list
+            output.append(sanitize_inputs(input_list_item, input_key, True))
+
+    else:
+
+        # If the key is in the input_value_types_dict, then validate the value type
+        if input_key in input_value_types_dict.keys():
+
+            # If the value's type is in the tuple, then just copy it as is
+            if type(input_value) in input_value_types_dict[input_key]:
+
+                output = input_value
+
+            # Type doesn't match
+            else:
+
+                # Construct the warning message
+                type_warning_message = f"Parsing {environment_variables_dict['REPOS_TO_CONVERT']} found incorrect variable type for "
+
+                if input_key == "password":
+                    type_warning_message += input_key
+                else:
+                    type_warning_message += f"{input_key}: {input_value}"
+
+                type_warning_message += f", type {type(input_value)}, should be "
+
+                for variable_type in input_value_types_dict[input_key]:
+                    type_warning_message += f"{variable_type}, "
+
+                type_warning_message += "will attempt to convert it"
+
+                # Log the warning message
+                logging.warning(type_warning_message)
+
+                # Cast the value to the correct type
+                if input_value_types_dict[input_key] == (int,):
+                    output = int(input_value)
+
+                elif input_value_types_dict[input_key] == (bool,):
+                    output = bool(input_value)
+
+                else:
+                    output = str(input_value)
+                    # logging.info(f"output = str(input_value): {output}")
+        else:
+
+            logging.warning(f"No type check for {input_key}: {input_value} variable in {environment_variables_dict['REPOS_TO_CONVERT']}")
+            output = input_value
+
+    # logging.info(f"sanitize_inputs; ending; type(output): {type(output)}, output: {output}")
+
+    return output
 
 
 def clone_svn_repos():
@@ -225,21 +330,21 @@ def clone_svn_repo(repo_key):
 
     # Get config parameters read from repos-to-clone.yaml, and set defaults if they're not provided
     git_repo_name               = repo_key
-    authors_file_path           = repos_dict[repo_key].get("authors-file-path", None)
-    authors_prog_path           = repos_dict[repo_key].get("authors-prog-path", None)
-    bare_clone                  = repos_dict[repo_key].get("bare-clone", True)
-    branches                    = repos_dict[repo_key].get("branches", None)
-    code_host_name              = repos_dict[repo_key].get("code-host-name", None)
-    fetch_batch_size            = repos_dict[repo_key].get("fetch-batch-size", 100)
-    git_default_branch          = repos_dict[repo_key].get("git-default-branch","trunk")
-    git_ignore_file_path        = repos_dict[repo_key].get("git-ignore-file-path", None)
-    git_org_name                = repos_dict[repo_key].get("git-org-name", None)
-    layout                      = repos_dict[repo_key].get("layout", None)
-    password                    = repos_dict[repo_key].get("password", None)
-    svn_remote_repo_code_root   = repos_dict[repo_key].get("svn-repo-code-root", None)
-    tags                        = repos_dict[repo_key].get("tags", None)
-    trunk                       = repos_dict[repo_key].get("trunk", None)
-    username                    = repos_dict[repo_key].get("username", None)
+    authors_file_path           = repos_dict[repo_key].get("authors-file-path"    , None    )
+    authors_prog_path           = repos_dict[repo_key].get("authors-prog-path"    , None    )
+    bare_clone                  = repos_dict[repo_key].get("bare-clone"           , True    )
+    branches                    = repos_dict[repo_key].get("branches"             , None    )
+    code_host_name              = repos_dict[repo_key].get("code-host-name"       , None    )
+    fetch_batch_size            = repos_dict[repo_key].get("fetch-batch-size"     , 100     )
+    git_default_branch          = repos_dict[repo_key].get("git-default-branch"   , "trunk" )
+    git_ignore_file_path        = repos_dict[repo_key].get("git-ignore-file-path" , None    )
+    git_org_name                = repos_dict[repo_key].get("git-org-name"         , None    )
+    layout                      = repos_dict[repo_key].get("layout"               , None    )
+    password                    = repos_dict[repo_key].get("password"             , None    )
+    svn_remote_repo_code_root   = repos_dict[repo_key].get("svn-repo-code-root"   , None    )
+    tags                        = repos_dict[repo_key].get("tags"                 , None    )
+    trunk                       = repos_dict[repo_key].get("trunk"                , None    )
+    username                    = repos_dict[repo_key].get("username"             , None    )
 
     ## Parse config parameters into command args
     # TODO: Interpret code_host_name, git_org_name, and git_repo_name if not given
@@ -268,7 +373,8 @@ def clone_svn_repo(repo_key):
     cmd_git_authors_file            = arg_git_cfg + [ "svn.authorsfile", authors_file_path                  ]
     cmd_git_authors_prog            = arg_git_cfg + [ "svn.authorsProg", authors_prog_path                  ]
     cmd_git_bare_clone              = arg_git_cfg + [ "core.bare", "true"                                   ]
-    cmd_git_default_branch          = arg_git_cfg + [ "--global", "init.defaultBranch", git_default_branch  ] # Possibility of collisions if multiple of these are run overlapping, make sure it's quick between reading and using this
+    # cmd_git_default_branch          = arg_git_cfg + [ "--global", "init.defaultBranch", git_default_branch  ] # Possibility of collisions if multiple of these are run overlapping, make sure it's quick between reading and using this
+    cmd_git_default_branch          = arg_git     + [ "symbolic-ref", "HEAD", f"refs/heads/{git_default_branch}"]
     cmd_git_get_batch_end_revision  = arg_git_cfg + [ "--get"                                               ] + arg_batch_end_revision
     cmd_git_get_svn_url             = arg_git_cfg + [ "--get", "svn-remote.svn.url"                         ]
     cmd_git_set_batch_end_revision  = arg_git_cfg + [ "--replace-all"                                       ] + arg_batch_end_revision
@@ -510,8 +616,8 @@ def clone_svn_repo(repo_key):
         if not os.path.exists(local_repo_path):
             os.makedirs(local_repo_path)
 
-        # Set the default branch before init
-        subprocess_run(cmd_git_default_branch)
+        # # Set the default branch before init
+        # subprocess_run(cmd_git_default_branch)
 
         if layout:
             cmd_git_svn_init   += ["--stdlayout"]
@@ -520,26 +626,37 @@ def clone_svn_repo(repo_key):
             if "standard" not in layout and "std" not in layout:
                 logging.warning(f"{repo_key}; Layout shortcut provided with incorrect value {layout}, only standard is supported for the shortcut, continuing assuming standard, otherwise provide --trunk, --tags, and --branches")
 
+        # There can only be one trunk
         if trunk:
-            cmd_git_svn_init   += ["--trunk", trunk]
+            cmd_git_svn_init            += ["--trunk", trunk]
+
+        # Tags and branches can either be single strings or lists of strings
         if tags:
-            cmd_git_svn_init   += ["--tags", tags]
+            if isinstance(tags, str):
+                cmd_git_svn_init        += ["--tags", tags]
+            if isinstance(tags, list):
+                for tag in tags:
+                    cmd_git_svn_init    += ["--tags", tag]
         if branches:
-            cmd_git_svn_init   += ["--branches", branches]
+            if isinstance(branches, str):
+                cmd_git_svn_init        += ["--branches", branches]
+            if isinstance(branches, list):
+                for branch in branches:
+                    cmd_git_svn_init    += ["--branches", branch]
 
         # Initialize the repo
         subprocess_run(cmd_git_svn_init, password, arg_svn_echo_password)
 
-        # Initialize this config with a 0 value
-        cmd_git_set_batch_end_revision.append(str(0))
-        subprocess_run(cmd_git_set_batch_end_revision)
+        # Set the default locally after before init
+        subprocess_run(cmd_git_default_branch)
 
         # Configure the bare clone
-        # Testing without the bare clone to see if branching works easier
-        # and because I forget why a bare clone was needed
         if bare_clone:
             subprocess_run(cmd_git_bare_clone)
 
+        # Initialize this config with a 0 value
+        cmd_git_set_batch_end_revision.append(str(0))
+        subprocess_run(cmd_git_set_batch_end_revision)
 
     ## Back to steps we do for both Create and Update states, so users can update the below parameters without having to restart the clone from scratch
     # TODO: Check if these configs are already set the same before trying to set them
@@ -614,7 +731,6 @@ def clone_svn_repo(repo_key):
                 #  <class 'IndexError'>, ('list index out of range',), list index out of range
                 # Need to handle the issue where revisions seem to be out of order on the server
 
-
         # If we were successful getting both starting and ending revision numbers
         if batch_start_revision and batch_end_revision:
 
@@ -643,17 +759,11 @@ def clone_svn_repo(repo_key):
 
     clean_remote_branches(local_repo_path)
 
-    # Set default branch
-    # git symbolic-ref HEAD refs/heads/trunk
-    # git symbolic-ref HEAD refs/heads/{git_default_branch}
-
 
 def clean_remote_branches(local_repo_path):
 
     # Git svn and git tfs both create converted branches as remote branches, so the Sourcegraph clone doesn't show them to users
     # Need to convert the remote branches to local branches, so Sourcegraph users can see them
-
-    # TODO: Find out how to set the default branch, or if this is already taken care of with the git conifg --global init.defaultBranch setting
 
     cmd_git_garbage_collection  = ["git", "-C", local_repo_path, "gc"]
     subprocess_run(cmd_git_garbage_collection)
@@ -672,91 +782,141 @@ def clean_remote_branches(local_repo_path):
     #  refs/heads/
     # sed -i.backup 's/\ refs\/remotes\/origin\//\ refs\/heads\//g' packed-refs
 
+#     date_time                       = time.strftime("%Y-%m-%d-%H-%M-%S")
+#     packed_refs_file_path           = f"{local_repo_path}/.git/packed-refs"
+#     packed_refs_file_backup_path    = f"{packed_refs_file_path}-backup-{date_time}"
 
-    packed_refs_file_path           = f"{local_repo_path}/.git/packed-refs"
-    packed_refs_file_backup_path    = f"{packed_refs_file_path}-backup"
+#     tag_exclusions = [
+#         "@\d*$"
+#     ]
 
-    string_replacements = [
-        (" refs/remotes/origin/tags/"   , " refs/tags/"     ),
-        (" refs/remotes/origin/"        , " refs/heads/"    )
-    ]
+#     branch_exclusions = [
+#         "/tags/",
+#         "/trunk",
+#         "@\d*$",
+#     ]
 
-    # # The .git/packed-refs file only exists if git gc found stuff to pack into it
-    # if os.path.exists(packed_refs_file_path):
+#     tag_prefix     = "refs/remotes/origin/tags/"
+#     branch_prefix  = "refs/remotes/origin/"
 
-    #     # Take a backup, so we can compare before and after
-    #     shutil.copy2(packed_refs_file_path, packed_refs_file_backup_path)
+#     # The .git/packed-refs file only exists if git gc found stuff to pack into it
+#     if not os.path.exists(packed_refs_file_path):
+#         logging.debug(f"No git packed-refs file to fix branches and tags, at {packed_refs_file_path}")
+#         return
 
-    #     with open(packed_refs_file_path, "r") as packed_refs_file:
+#     # Take a backup, so we can compare before and after
+#     shutil.copy2(packed_refs_file_path, packed_refs_file_backup_path)
 
-    #         read_lines = packed_refs_file.readlines()
-    #         for read_line in read_lines:
-    #             logging.debug(f"Contents of {packed_refs_file_path} before cleanup: {read_line}")
+#     # Read the file content as lines into a list
+#     with open(packed_refs_file_path, "r") as packed_refs_file:
+#         packed_refs_file_content = packed_refs_file.read().splitlines()
 
-    #     with open(packed_refs_file_path, "r") as packed_refs_file:
+#     # Ensure the string replacements are done in the correct order
 
-    #         packed_refs_file_content = packed_refs_file.read()
+#     # Tags first
+#     # Not sure what in the git is happening here
+#     # https://sourcegraph.com/github.com/cjwilburn/svn-migration-scripts/-/blob/src/main/scala/Tags.scala?L19
+#     for packed_refs_file_content_line in packed_refs_file_content:
 
-    #     with open(packed_refs_file_path, "w") as packed_refs_file:
+#         logging.info(f"packed_refs_file_content_line: {packed_refs_file_content_line}")
 
-    #         # Ensure the string replacements are done in the correct order
-    #         for string_replacement in string_replacements:
+#         if tag_prefix in packed_refs_file_content_line:
 
-    #             packed_refs_file_content = packed_refs_file_content.replace(string_replacement[0], string_replacement[1])
+#             logging.info(f"tag_prefix in packed_refs_file_content_line: {tag_prefix} in {packed_refs_file_content_line}")
 
-    #         packed_refs_file.write(packed_refs_file_content)
+#             if not any(re.search(tag_exclusion, packed_refs_file_content_line) for tag_exclusion in tag_exclusions):
 
-    #     with open(packed_refs_file_path, "r") as packed_refs_file:
+#                 logging.info(f"no tag_exclusions in line: {packed_refs_file_content_line}")
+#                 new_line = packed_refs_file_content_line.replace(tag_prefix, "")
+#                 new_tag_ref  = new_line.split(" ")[0]
+#                 new_tag_name = new_line.split(" ")[1]
+#                 logging.info(f"new_tag_name: {new_tag_name}, new_tag_ref: {new_tag_ref}")
 
-    #         read_lines = packed_refs_file.readlines()
-    #         for read_line in read_lines:
-    #             logging.debug(f"Contents of {packed_refs_file_path} after cleanup: {read_line}")
+# #                git tag new_tag_name
 
-    # else:
+#     # Branches second
+#     # https://sourcegraph.com/github.com/cjwilburn/svn-migration-scripts/-/blob/src/main/scala/Branches.scala?L40
+#     for packed_refs_file_content_line in packed_refs_file_content:
 
-    #     logging.debug(f"No git packed-refs file to fix branches and tags, at {packed_refs_file_path}")
+#         logging.info(f"packed_refs_file_content_line: {packed_refs_file_content_line}")
+
+#         if branch_prefix in packed_refs_file_content_line:
+
+#             logging.info(f"branch_prefix in packed_refs_file_content_line: {branch_prefix} in {packed_refs_file_content_line}")
+
+#             if not any(re.search(branch_exclusion, packed_refs_file_content_line) for branch_exclusion in branch_exclusions):
+
+#                 logging.info(f"no branch_exclusions in line: {packed_refs_file_content_line}")
+#                 new_line = packed_refs_file_content_line.replace(branch_prefix, "")
+#                 new_branch_ref  = new_line.split(" ")[0]
+#                 new_branch_name = new_line.split(" ")[1]
+#                 logging.info(f"new_branch_name: {new_branch_name}, new_branch_ref: {new_branch_ref}")
+
+#                 # git branch new_branch_name new_branch_ref
+#                 cmd_git_branch = ["git", "-C", local_repo_path, "branch", "-f", new_branch_name, new_branch_ref]
+#                 subprocess_run(cmd_git_branch)
+
 
 
 
 def redact_password(args, password=None):
 
-    if password == None:
+    # Handle different types
+    # Return the same type this function was given
 
-        args_without_password = args
+    # If either args or password are NoneType, then just return
+    if isinstance(password, type(None)) or isinstance(args, type(None)):
+
+        return args
+
+    # If the password is not in the args, then just return the input args as is
+    elif str(password) not in str(args):
+
+        return args
+
+    # If it's type string, just use string's built-in .replace()
+    elif isinstance(args, str):
+
+        return args.replace(password, "REDACTED-PASSWORD")
+
+    # If it's type int, cast it to a string, then use string's built-in .replace()
+    elif isinstance(args, int):
+
+        # Can't add the redacted message to an int
+        args_without_password_string = str(args).replace(password, "")
+
+        # Cast back to an int to return the same type
+        args_without_password = int(args_without_password_string)
+
+    # AttributeError: 'list' object has no attribute 'replace'
+    # Need to iterate through the items in the list
+    elif isinstance(args, list):
+
+        args_without_password = []
+        for arg in args:
+
+            # Send the list item back through this function to hit any of the non-list types
+            args_without_password.append(redact_password(arg, password))
+
+    # If it's a dict, recurse through the dict, unit it gets down to strings or ints
+    elif isinstance(args, dict):
+
+        args_without_password = {}
+
+        for key in args.keys():
+
+            # Check if the password is in the key, and convert it to a string
+            key_string = redact_password(str(key), password)
+
+            # Send the value back through this function to hit any of the non-list types
+            args_without_password[key_string] = redact_password(args[key], password)
 
     else:
 
-        if isinstance(args, list):
+        logging.error(f"redact_password() doesn't handle args of type {type(args)}")
 
-            # AttributeError: 'list' object has no attribute 'replace'
-            # Need to iterate through strings in list
-            args_without_password = []
-            for arg in args:
-
-                if password in arg:
-
-                    arg = arg.replace(password, "REDACTED-PASSWORD")
-
-                args_without_password.append(arg)
-
-        elif isinstance(args, str):
-
-            if password in arg:
-                args_without_password = arg.replace(password, "REDACTED-PASSWORD")
-
-        elif isinstance(args, dict):
-
-            for key in args.keys():
-
-                if password in args[key]:
-                    args[key] = args[key].replace(password, "REDACTED-PASSWORD")
-
-            args_without_password = args
-
-        else:
-
-            logging.error(f"redact_password() doesn't handle args of type {type(args)}")
-            args_without_password = None
+        # Set it to None to just break the code instead of leak the password
+        args_without_password = None
 
     return args_without_password
 
@@ -767,6 +927,7 @@ def subprocess_run(args, password=None, echo_password=None, quiet=False):
     return_dict["returncode"]   = 1
     return_dict["output"]       = None
     subprocess_output_to_log    = None
+    log_level                   = logging.DEBUG
 
     try:
 
@@ -824,63 +985,105 @@ def subprocess_run(args, password=None, echo_password=None, quiet=False):
         # If the process exited successfully
         if subprocess_to_run.returncode == 0:
 
-            return_dict["returncode"] = 0
-
             status_message = "succeeded"
-            print_process_status(process_dict, status_message, subprocess_output_to_log)
+
+            return_dict["returncode"] = 0
 
         else:
 
             status_message = "failed"
 
-            log_level = logging.ERROR
-
-            if quiet:
-                log_level = logging.DEBUG
-
-            print_process_status(process_dict, status_message, subprocess_output_to_log, log_level=log_level)
+            if not quiet:
+                log_level = logging.ERROR
 
     except subprocess.CalledProcessError as exception:
 
             status_message = f"raised an exception: {type(exception)}, {exception.args}, {exception}"
 
-            log_level = logging.ERROR
+            if not quiet:
+                log_level = logging.ERROR
 
-            if quiet:
-                log_level = logging.DEBUG
-
-            print_process_status(process_dict, status_message, subprocess_output_to_log, log_level=log_level)
-
+    # If the command fails
     if subprocess_to_run.returncode != 0:
 
-        # May need to make this more generic Git for all repo conversions
-        # Handle the case of abandoned git svn lock files blocking fetch processes
-        # We already know that no other git svn fetch processes are running, because we checked for that before spawning this fetch process
-        # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/wsl/zest/.git/svn/refs/remotes/git-svn/index.lock': File exists.  Another git process seems to be running in this repository, e.g. an editor opened by 'git commit'. Please make sure all processes are terminated then try again. If it still fails, a git process may have crashed in this repository earlier: remove the file manually to continue. write-tree: command returned error: 128
-        lock_file_error_strings = ["Unable to create", "index.lock", "File exists"]
+        # There's a high chance it was caused by one of the lock files
+        # If check_lock_files successfully cleared a lock file,
+        if check_lock_files(args, subprocess_output_to_log):
 
-        # Handle this as a string,
-        stderr_without_password_string = " ".join(subprocess_output_to_log)
-        lock_file_error_conditions = (lock_file_error_string in stderr_without_password_string for lock_file_error_string in lock_file_error_strings)
-        if all(lock_file_error_conditions):
+            # Change the log_level to debug so the failed process doesn't log an error in print_process_status()
+            log_level = logging.DEBUG
 
-            try:
-
-                # Get the index.lock file path from stderr_without_password_string
-                lock_file_path = stderr_without_password_string.split("Unable to create '")[1].split("': File exists.")[0]
-
-                logging.warning(f"Fetch failed to start due to finding a lockfile in repo at {lock_file_path}, but no fetch process running for this repo, deleting the lockfile so it'll try again on the next run")
-
-                # Careful with recursive function call, don't create infinite recursion and fork bomb the container
-                subprocess_run(["rm", "-f", lock_file_path])
-
-            except subprocess.CalledProcessError as exception:
-                logging.error(f"Failed to rm -f lockfile at {lock_file_path} with exception: {type(exception)}, {exception.args}, {exception}")
-
-            except ValueError as exception:
-                logging.error(f"Failed to find git execution path in command args while trying to delete {lock_file_path} with exception: {type(exception)}, {exception.args}, {exception}")
+    print_process_status(process_dict, status_message, subprocess_output_to_log, log_level)
 
     return return_dict
+
+
+def check_lock_files(args, subprocess_output_to_log):
+
+    return_value = False
+
+    # Handle the case of abandoned git svn fetch lock files blocking fetch processes
+        # May need to make this more generic Git for all repo conversions
+        # May need to make this more generic Git for all repo conversions
+        # Handle the case of abandoned git svn lock files blocking fetch processes
+    # May need to make this more generic Git for all repo conversions
+        # Handle the case of abandoned git svn lock files blocking fetch processes
+    # We already know that no other git svn fetch processes are running, because we checked for that before spawning this fetch process
+    # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/wsl/zest/.git/svn/refs/remotes/git-svn/index.lock': File exists.  Another git process seems to be running in this repository, e.g. an editor opened by 'git commit'. Please make sure all processes are terminated then try again. If it still fails, a git process may have crashed in this repository earlier: remove the file manually to continue. write-tree: command returned error: 128
+    fetch_lock_file_error_strings       = ["Unable to create", "index.lock", "File exists"]
+    subprocess_output_to_log_string      = " ".join(subprocess_output_to_log)
+    fetch_lock_file_error_conditions    = (fetch_lock_file_error_string in subprocess_output_to_log_string for fetch_lock_file_error_string in fetch_lock_file_error_strings)
+
+    if all(fetch_lock_file_error_conditions):
+
+        try:
+
+            # Get the index.lock file path from subprocess_output_to_log_string
+            fetch_lock_file_path = subprocess_output_to_log_string.split("Unable to create '")[1].split("': File exists.")[0]
+
+            logging.warning(f"Fetch failed to start due to finding a lockfile in repo at {fetch_lock_file_path}, but no fetch process running for this repo, deleting the lockfile so it'll try again on the next run")
+
+            # Careful with recursive function call, don't create infinite recursion and fork bomb the container
+            cmd_rm_lockfile = ["rm", "-f", fetch_lock_file_path]
+            subprocess_run(cmd_rm_lockfile)
+
+            return_value = True
+
+        except subprocess.CalledProcessError as exception:
+            logging.error(f"Failed to rm -f lockfile at {fetch_lock_file_path} with exception: {type(exception)}, {exception.args}, {exception}")
+
+        except ValueError as exception:
+            logging.error(f"Failed to find git execution path in command args while trying to delete {fetch_lock_file_path} with exception: {type(exception)}, {exception.args}, {exception}")
+
+
+    # Handle the case of Git garbage collection lock files
+    # 'cmdline': ['git', '-C', '/sourcegraph/src-serve-root/svn.apache.org/asf/xmlbeans', 'gc']
+    # "fatal: gc is already running on machine '75c377aedbaf' pid 3700 (use --force if not)"
+    git_gc_lock_file_error_strings       = ["gc is already running on machine", "(use --force if not)"]
+    subprocess_output_to_log_string      = " ".join(subprocess_output_to_log)
+    git_gc_lock_file_error_conditions    = (git_gc_lock_file_error_string in subprocess_output_to_log_string for git_gc_lock_file_error_string in git_gc_lock_file_error_strings)
+
+    if all(git_gc_lock_file_error_conditions):
+
+        try:
+
+            # Get the lock file path from the command args
+            # ["git", "-C", local_repo_path, "gc"]
+            # cmd_git_garbage_collection  = ["git", "-C", local_repo_path, "gc"]
+            # subprocess_run(cmd_git_garbage_collection)
+            git_gc_lock_file_path = f"{args[2]}/.git/gc.pid"
+
+            logging.warning(f"Git garbage collection failed to start due to finding a lockfile in repo at {git_gc_lock_file_path}, but no git gc process running for this repo, deleting the lockfile so it'll try again on the next run")
+
+            cmd_rm_lockfile = ["rm", "-f", git_gc_lock_file_path]
+            subprocess_run(cmd_rm_lockfile)
+
+            return_value = True
+
+        except subprocess.CalledProcessError as exception:
+            logging.error(f"Failed to rm -f lockfile at {git_gc_lock_file_path} with exception: {type(exception)}, {exception.args}, {exception}")
+
+    return return_value
 
 
 def clone_tfs_repos():
@@ -1084,7 +1287,7 @@ def main():
         logging.info(f"Finishing {script_name} run {script_run_number} with args: " + str(environment_variables_dict))
 
         # Sleep the configured interval
-        logging.info(f"Sleeping for REPO_CONVERTER_INTERVAL_SECONDS={environment_variables_dict['REPO_CONVERTER_INTERVAL_SECONDS']} seconds")
+        logging.info(f"Sleeping main loop for REPO_CONVERTER_INTERVAL_SECONDS={environment_variables_dict['REPO_CONVERTER_INTERVAL_SECONDS']} seconds")
 
         script_run_number += 1
         time.sleep(environment_variables_dict["REPO_CONVERTER_INTERVAL_SECONDS"])
