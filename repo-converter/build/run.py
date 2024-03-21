@@ -1151,8 +1151,7 @@ def subprocess_run(args, password=None, echo_password=None, quiet=False):
         if check_lock_files(args, process_dict):
 
             # Change the log_level to debug so the failed process doesn't log an error in print_process_status()
-            # log_level = "debug"
-            pass
+            log_level = "debug"
 
     print_process_status(process_dict, status_message, truncated_subprocess_output_to_log, log_level)
 
@@ -1205,8 +1204,13 @@ def check_lock_files(args, process_dict):
 
                 lock_file_content = ""
 
-                with open(lock_file_path, "r") as lock_file_object:
-                    lock_file_content = lock_file_object.read()
+                try:
+
+                    with open(lock_file_path, "r") as lock_file_object:
+                        lock_file_content = lock_file_object.read()
+
+                except UnicodeDecodeError as exception:
+                    lock_file_content = exception
 
                 log(f"pid {pid} failed; {process} failed to start due to finding a lock file in the repo at {lock_file_path}, but no other process is running with {process_command}; deleting the lock file so it'll try again on the next run; lock file content: {lock_file_content}", "warning")
 
