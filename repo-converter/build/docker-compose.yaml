@@ -22,3 +22,9 @@ services:
       - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO
       # - REPOS_TO_CONVERT="/sourcegraph/repos-to-convert.yaml" # Path inside the container to find this file, only change to match if the right side of the volume mapping changes
       # - SRC_SERVE_ROOT="/sourcegraph/src-serve-root" # Path inside the container to find this directory, only change to match if the right side of the volume mapping changes
+      # Leave these environment variables as is, and define them in ./build.sh
+      - BUILD_BRANCH
+      - BUILD_COMMIT
+      - BUILD_DATE
+      - BUILD_DIRTY
+      - BUILD_TAG
