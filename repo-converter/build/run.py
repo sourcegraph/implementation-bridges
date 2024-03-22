@@ -808,8 +808,8 @@ def clone_svn_repo(repo_key):
 
             log(f"{repo_key}; up to date, skipping; local rev {previous_batch_end_revision}, remote rev {last_changed_rev}", "info")
 
-            subprocess_run(cmd_git_garbage_collection)
-            cleanup_branches_and_tags(local_repo_path)
+            # subprocess_run(cmd_git_garbage_collection)
+            # cleanup_branches_and_tags(local_repo_path)
 
             return
 
