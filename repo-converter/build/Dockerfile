@@ -1,4 +1,8 @@
 # syntax=docker/dockerfile:1
+# Using version:1 means always getting the latest version of dockerfile syntax within major version 1
+# https://docs.docker.com/build/dockerfile/frontend/#stable-channel
+# version:1 is still the most popular version
+# https://sourcegraph.com/search?q=context:global+%23+syntax%3Ddocker/dockerfile:(.*)&patternType=regexp&sm=0&expanded=&groupBy=group
 
 # Using Ubuntu LTS
 FROM ubuntu:22.04 as base
@@ -14,6 +18,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Install packages
+# default-jre needed for Atlassian's svn-migration-scripts.jar
+#        default-jre \
+# gcc and python3-dev needed for psutils
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install --no-install-recommends -y \
@@ -33,7 +40,6 @@ RUN apt-get update && \
     systemctl enable cron && \
     systemctl start cron
 
-
 # Download dependencies as a separate step to take advantage of Docker's caching
 # Leverage a cache mount to /root/.cache/pip to speed up subsequent builds
 # Leverage a bind mount to requirements.txt to avoid having to copy them into
@@ -41,6 +47,7 @@ RUN apt-get update && \
 # Install requirements
 RUN --mount=type=cache,target=/root/.cache/pip \
     --mount=type=bind,source=requirements.txt,target=requirements.txt \
+    python3 -m pip install --upgrade pip && \
     python3 -m pip install -r requirements.txt
 
 # # Create sourcegraph user
@@ -49,7 +56,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Copy the source code into the container
 WORKDIR /sourcegraph
-COPY . .
+COPY run.py .
 
 # Start the container
 CMD ["/usr/bin/python3", "/sourcegraph/run.py"]
