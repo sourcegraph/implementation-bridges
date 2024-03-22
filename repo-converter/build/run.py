@@ -11,49 +11,10 @@
     # SVN
 
         # Branches
-            # Problem
-                # Sort out how to see all branches in Sourcegraph
-                # Can we accomplish the same with a bare clone, or do we need a working copy for git reasons?
-                    # for a bare repo: git symbolic-ref HEAD refs/heads/trunk
-            # Approaches
 
-                # Atlassian's Java binary to tidy up branches and tags?
-                    # Didn't work because it hasn't been updated since Git changed the branch path to include the remote name
+            #  git symbolic-ref HEAD refs/heads/trunk
 
-                # Edit .git/packed-refs
-                    # Didn't seem to be reliable
-                    # sed worked manually once, but not in python
-                    # Manipulating the file content as strings in python was also weirdly inconsistent
-
-                    # Find
-                    #  refs/remotes/origin/tags/
-                    # Replace with
-                    #  refs/tags/
-                    # sed -i.backup 's/\ refs\/remotes\/origin\/tags\//\ refs\/tags\//g' packed-refs
-
-                    # Find
-                    #  refs/remotes/origin/
-                    # Replace with
-                    #  refs/heads/
-                    # sed -i.backup 's/\ refs\/remotes\/origin\//\ refs\/heads\//g' packed-refs
-
-                # git / git svn commands
-                    # Need to try a more default config (not bare, no custom default branch), and see if it works better, following the usage examples on https://git-scm.com/docs/git-svn
-
-                    # git reset --hard origin/trunk ### This is what fast forwards local trunk branch to remotes/origin/trunk
-                    # git svn rebase
-
-                    # git branch -ra
-                    # git log -1
-                    # git log -1 origin/trunk
-
-                # GitPython
-                    # Seems like I'm close
-                    # For each local branch
-                        # If there's a matching remote branch name, at a different commit, delete the local branch
-                    # For each remote branch
-                        # Filter out trunk, @revs, and remote branches with matching local branch names
-                        # Create new local branch
+            # Edit .git/packed-refs
 
     # TFVC
 
@@ -1062,27 +1023,16 @@ def cleanup_branches_and_tags(local_repo_path):
     with open(packed_refs_file_path, "r") as packed_refs_file:
         input_lines = packed_refs_file.read().splitlines()
 
-    log(f"Starting content of {packed_refs_file_path}:", "warning")
-
-    print(f"input_lines:")
-    print(input_lines)
-
     output_list_of_strings_and_line_number_tuples = []
     output_list_of_reversed_tuples = []
 
     for i in range(len(input_lines)):
-
-        print()
-        print()
 
         try :
 
             hash, path = input_lines[i].split(" ")
 
         except ValueError:
-
-            print(f"input_lines[i].split(' ') failed on line {i}, assuming it's a string, adding it back")
-            print(input_lines[i])
 
             output_list_of_strings_and_line_number_tuples.append([str(input_lines[i]), i])
 
@@ -1093,24 +1043,17 @@ def cleanup_branches_and_tags(local_repo_path):
             log(f"Exception while cleaning branches and tags: {exception}", "error")
             continue
 
-        print(f"hash, path = input_lines[i].split(" ")")
-        print(f"hash: {hash}")
-        print(f"path: {path}")
-
         # If the path is a local tag, then delete it
         if path.startswith(local_tag_prefix):
-            print(f"local tag: {path}, deleting")
             continue
 
         # If the path is a local branch, then delete it
         if path.startswith(local_branch_prefix):
-            print(f"local branch: {path}, deleting")
             continue
 
         # If the path is a remote tag, then copy it to a local path
         elif path.startswith(remote_tag_prefix):
 
-            print(f"remote tag: {path}, adding it back as is")
             output_list_of_reversed_tuples.append(tuple([path,hash]))
 
             # Filter out the junk
@@ -1118,17 +1061,12 @@ def cleanup_branches_and_tags(local_repo_path):
             filter=(exclusion in path for exclusion in remote_tag_exclusions)
             if not any(filter):
 
-                print(f"remote tag: {path}, no exclusions, copying hash to local tag")
                 new_path = path.replace(remote_tag_prefix, local_tag_prefix)
                 output_list_of_reversed_tuples.append(tuple([new_path,hash]))
-
-            else:
-                print(f"remote tag: {path}, contains exclusions, not copying")
 
         # If the path is a remote branch, then copy it to a local path
         elif path.startswith(remote_branch_prefix):
 
-            print(f"remote branch: {path}, adding it back as is")
             output_list_of_reversed_tuples.append(tuple([path,hash]))
 
             # Filter out the junk
@@ -1136,20 +1074,12 @@ def cleanup_branches_and_tags(local_repo_path):
             filter=(exclusion in path for exclusion in remote_branch_exclusions)
             if not any(filter):
 
-                print(f"remote branch: {path}, no exclusions, copying hash to local branch")
                 new_path = path.replace(remote_branch_prefix, local_branch_prefix)
                 output_list_of_reversed_tuples.append(tuple([new_path,hash]))
 
-            else:
-                print(f"remote branch: {path}, contains exclusions, not copying")
-
         elif path == "refs/remotes/git-svn":
 
-            print(f"remote branch: {path}, adding it back as is")
             output_list_of_reversed_tuples.append(tuple([path,hash]))
-
-            print(f"remote branch: {path}, copying hash to local default branch")
-
             default_branch = "refs/heads/bloop"
 
             with open(f"{local_repo_path}/.git/HEAD", "r") as head_file:
@@ -1173,25 +1103,10 @@ def cleanup_branches_and_tags(local_repo_path):
     for string, line_number in output_list_of_strings_and_line_number_tuples:
         output_list_of_strings.insert(line_number, string)
 
-    print()
-    print()
-    print(f"input_lines:")
-    for line in input_lines:
-        print(line)
-    print()
-    print()
-    print(f"output_list_of_strings:")
-    for line in output_list_of_strings:
-        print(line)
-    print()
-    print()
-
     # Write the content back to the file
     with open(packed_refs_file_path, "w") as packed_refs_file:
         for line in output_list_of_strings:
             packed_refs_file.write(f"{line}\n")
-
-    log(f"Finished {packed_refs_file_path}:", "warning")
 
 
 def subprocess_run(args, password=None, echo_password=None, quiet=False):
