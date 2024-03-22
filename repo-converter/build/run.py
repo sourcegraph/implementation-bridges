@@ -8,31 +8,78 @@
         # SVN - Need to sort out branches
         # TFVC - Need to sort out branches
 
-    # Git
-
-        # SSH clone
-            # Move git SSH clone from outside bash script into this script
-
-    # TFVC
-
-        # Convert tfs-to-git Bash script to Python and add it here
-
     # SVN
 
         # Branches
             # Problem
                 # Sort out how to see all branches in Sourcegraph
-            # Approaches
                 # Can we accomplish the same with a bare clone, or do we need a working copy for git reasons?
                     # for a bare repo: git symbolic-ref HEAD refs/heads/trunk
-                # Do we need a Python Git library to modify the repo metadata (may be safer, if the library uses lock files?), or can we do it as a file-based operation?
+            # Approaches
+
                 # Atlassian's Java binary to tidy up branches and tags?
+                    # Didn't work because it hasn't been updated since Git changed the branch path to include the remote name
+
+                # Edit .git/packed-refs
+                    # Didn't seem to be reliable
+                    # sed worked manually once, but not in python
+                    # Manipulating the file content as strings in python was also weirdly inconsistent
+
+                    # Find
+                    #  refs/remotes/origin/tags/
+                    # Replace with
+                    #  refs/tags/
+                    # sed -i.backup 's/\ refs\/remotes\/origin\/tags\//\ refs\/tags\//g' packed-refs
+
+                    # Find
+                    #  refs/remotes/origin/
+                    # Replace with
+                    #  refs/heads/
+                    # sed -i.backup 's/\ refs\/remotes\/origin\//\ refs\/heads\//g' packed-refs
+
+                # git / git svn commands
+                    # Need to try a more default config (not bare, no custom default branch), and see if it works better, following the usage examples on https://git-scm.com/docs/git-svn
+
+                    # git reset --hard origin/trunk ### This is what fast forwards local trunk branch to remotes/origin/trunk
+                    # git svn rebase
+
+                    # git branch -ra
+                    # git log -1
+                    # git log -1 origin/trunk
+
+                # GitPython
+                    # Seems like I'm close
+                    # For each local branch
+                        # If there's a matching remote branch name, at a different commit, delete the local branch
+                    # For each remote branch
+                        # Filter out trunk, @revs, and remote branches with matching local branch names
+                        # Create new local branch
+
+    # TFVC
+
+        # Convert tfs-to-git Bash script to Python and add it here
+
+    # Git
+
+        # SSH clone
+            # Move git SSH clone from outside bash script into this script
+            # See if the GitPython module fetches the repo successfully, or has a way to clone multiple branches
+
+            # From the git remote --help
+                # Imitate git clone but track only selected branches
+                #     mkdir project.git
+                #     cd project.git
+                #     git init
+                #     git remote add -f -t master -m master origin git://example.com/git.git/
+                #     git merge origin
+
+    # Other
 
         # Parallelism
             # Add a max concurrent repos environment variable
 
         # SVN commands hanging
-            # Add a timeout for hanging svn info and svn log commands, if data isn't transferring
+            # Add a timeout in run_subprocess() for hanging svn info and svn log commands, if data isn't transferring
 
         # .gitignore files
             # git svn create-ignore
@@ -75,17 +122,17 @@
     # https://gitpython.readthedocs.io/en/stable/tutorial.html
         # Couple CVEs: https://nvd.nist.gov/vuln/search/results?query=gitpython
 
+    # Decent example of converting commit messages
+    # https://github.com/seantis/git-svn-trac/blob/master/git-svn-trac.py
+
 
 ## Import libraries
 # Standard libraries
-from pathlib import Path                                    # https://docs.python.org/3/library/pathlib.html
 from datetime import datetime, timedelta                    # https://docs.python.org/3/library/datetime.html
-import json                                                 # https://docs.python.org/3/library/json.html
 import logging                                              # https://docs.python.org/3/library/logging.html
 import multiprocessing                                      # https://docs.python.org/3/library/multiprocessing.html
 import os                                                   # https://docs.python.org/3/library/os.html
 import random                                               # https://docs.python.org/3/library/random.html
-import re                                                   # https://docs.python.org/3/library/re.html
 import shutil                                               # https://docs.python.org/3/library/shutil.html
 import signal                                               # https://docs.python.org/3/library/signal.html
 import subprocess                                           # https://docs.python.org/3/library/subprocess.html
@@ -399,7 +446,7 @@ def sanitize_inputs(input_value, input_key="", recursed=False):
 
     # Uses recursion to depth-first-search through the repos_dict dictionary, with arbitrary depths, keys, and value types
 
-    # logging.info(f"sanitize_inputs; starting; type(input_key): {type(input_key)}, input_key: {input_key}, type(input_value): {type(input_value)}, input_value: {input_value}, recursed: {recursed}")
+    # log(f"sanitize_inputs; starting; type(input_key): {type(input_key)}, input_key: {input_key}, type(input_value): {type(input_value)}, input_value: {input_value}, recursed: {recursed}", "info")
 
     # Take in the repos_dict
     # DFS traverse the dictionary
@@ -430,14 +477,14 @@ def sanitize_inputs(input_value, input_key="", recursed=False):
 
     if isinstance(input_value, dict):
 
-        # logging.info(f"sanitize_inputs(): received dict with key: {input_key} and dict: {input_value}")
+        # log(f"sanitize_inputs(): received dict with key: {input_key} and dict: {input_value}", "info")
 
         output = {}
 
         for input_value_key in input_value.keys():
 
-            # logging.info(f"sanitize_inputs(): key   type: {type(input_key)}; key: {input_key}")
-            # logging.info(f"sanitize_inputs(): value type: {type(input[input_key])}; value: {input[input_key]}")
+            # log(f"sanitize_inputs(): key   type: {type(input_key)}; key: {input_key}", "info")
+            # log(f"sanitize_inputs(): value type: {type(input[input_key])}; value: {input[input_key]}", "info")
 
             # Convert the key to a string
             output_key = str(input_value_key)
@@ -448,13 +495,13 @@ def sanitize_inputs(input_value, input_key="", recursed=False):
     # If this function was called with a list
     elif isinstance(input_value, list):
 
-        # logging.info(f"sanitize_inputs(): received list with key: {input_key} and list: {input_value}")
+        # log(f"sanitize_inputs(): received list with key: {input_key} and list: {input_value}", "info")
 
         output = []
 
         for input_list_item in input_value:
 
-            # logging.info(f"sanitize_inputs(): type(input_list_item): {type(input_list_item)}; input_list_item: {input_list_item}")
+            # log(f"sanitize_inputs(): type(input_list_item): {type(input_list_item)}; input_list_item: {input_list_item}", "info")
 
             # Recurse back into this function to handle the values of this list
             output.append(sanitize_inputs(input_list_item, input_key, True))
@@ -491,6 +538,8 @@ def sanitize_inputs(input_value, input_key="", recursed=False):
                 log(type_warning_message, "warning")
 
                 # Cast the value to the correct type
+                # This one chokes pretty hard, need to add a try except block
+                # ValueError: invalid literal for int() with base 10: '2=1'
                 if input_value_types_dict[input_key] == (int,):
                     output = int(input_value)
 
@@ -499,7 +548,7 @@ def sanitize_inputs(input_value, input_key="", recursed=False):
 
                 else:
                     output = str(input_value)
-                    # logging.info(f"output = str(input_value): {output}")
+                    # log(f"output = str(input_value): {output}", "info")
 
             # Now that the keys and values are the correct type, check if it's a password
             if input_key == "password":
@@ -512,8 +561,7 @@ def sanitize_inputs(input_value, input_key="", recursed=False):
             log(f"No type check for {input_key}: {input_value} variable in {environment_variables_dict['REPOS_TO_CONVERT']}", "warning")
             output = input_value
 
-    # logging.info(f"sanitize_inputs; ending; type(output): {type(output)}, output: {output}")
-
+    # log(f"sanitize_inputs; ending; type(output): {type(output)}, output: {output}", "info")
     return output
 
 
@@ -573,19 +621,18 @@ def clone_svn_repo(repo_key):
     ## Define commands
     # One offs in the new array
     # Reused one in their own arrays above, even if they're single element arrays
-    cmd_git_authors_file            = arg_git_cfg + [ "svn.authorsfile", authors_file_path                  ]
-    cmd_git_authors_prog            = arg_git_cfg + [ "svn.authorsProg", authors_prog_path                  ]
-    cmd_git_bare_clone              = arg_git_cfg + [ "core.bare", "true"                                   ]
-    # cmd_git_default_branch          = arg_git_cfg + [ "--global", "init.defaultBranch", git_default_branch  ] # Possibility of collisions if multiple of these are run overlapping, make sure it's quick between reading and using this
+    cmd_git_authors_file            = arg_git_cfg + [ "svn.authorsfile", authors_file_path                      ]
+    cmd_git_authors_prog            = arg_git_cfg + [ "svn.authorsProg", authors_prog_path                      ]
+    cmd_git_bare_clone              = arg_git_cfg + [ "core.bare", "true"                                       ]
     cmd_git_default_branch          = arg_git     + [ "symbolic-ref", "HEAD", f"refs/heads/{git_default_branch}"]
-    cmd_git_garbage_collection      = arg_git     + [ "gc"                                                  ]
-    cmd_git_get_batch_end_revision  = arg_git_cfg + [ "--get"                                               ] + arg_batch_end_revision
-    cmd_git_get_svn_url             = arg_git_cfg + [ "--get", "svn-remote.svn.url"                         ]
-    cmd_git_set_batch_end_revision  = arg_git_cfg + [ "--replace-all"                                       ] + arg_batch_end_revision
-    cmd_git_svn_fetch               = arg_git_svn + [ "fetch"                                               ]
-    cmd_git_svn_init                = arg_git_svn + [ "init"                                                ] + arg_svn_remote_repo_code_root
-    cmd_svn_info                    =               [ "svn", "info"                                         ] + arg_svn_non_interactive + arg_svn_remote_repo_code_root
-    cmd_svn_log                     =               [ "svn", "log", "--xml", "--with-no-revprops"           ] + arg_svn_non_interactive + arg_svn_remote_repo_code_root
+    cmd_git_garbage_collection      = arg_git     + [ "gc"                                                      ]
+    cmd_git_get_batch_end_revision  = arg_git_cfg + [ "--get"                                                   ] + arg_batch_end_revision
+    cmd_git_get_svn_url             = arg_git_cfg + [ "--get", "svn-remote.svn.url"                             ]
+    cmd_git_set_batch_end_revision  = arg_git_cfg + [ "--replace-all"                                           ] + arg_batch_end_revision
+    cmd_git_svn_fetch               = arg_git_svn + [ "fetch"                                                   ]
+    cmd_git_svn_init                = arg_git_svn + [ "init"                                                    ] + arg_svn_remote_repo_code_root
+    cmd_svn_info                    =               [ "svn", "info"                                             ] + arg_svn_non_interactive + arg_svn_remote_repo_code_root
+    cmd_svn_log                     =               [ "svn", "log", "--xml", "--with-no-revprops"               ] + arg_svn_non_interactive + arg_svn_remote_repo_code_root
 
     ## Modify commands based on config parameters
     if username:
@@ -849,9 +896,6 @@ def clone_svn_repo(repo_key):
         # Initialize the repo
         subprocess_run(cmd_git_svn_init, password, arg_svn_echo_password)
 
-        # Set the default locally after before init
-        subprocess_run(cmd_git_default_branch)
-
         # Configure the bare clone
         if bare_clone:
             subprocess_run(cmd_git_bare_clone)
@@ -859,6 +903,9 @@ def clone_svn_repo(repo_key):
         # Initialize this config with a 0 value
         cmd_git_set_batch_end_revision.append(str(0))
         subprocess_run(cmd_git_set_batch_end_revision)
+
+        # Set the default branch local to this repo, after init
+        subprocess_run(cmd_git_default_branch)
 
     ## Back to steps we do for both Create and Update states, so users can update the below parameters without having to restart the clone from scratch
     # TODO: Check if these configs are already set the same before trying to set them
@@ -929,7 +976,7 @@ def clone_svn_repo(repo_key):
                 log(f"{repo_key}; IndexError when getting batch start or end revisions for batch size {fetch_batch_size}, skipping this run to retry next run", "warning")
                 return
 
-                # logging.warning(f"{repo_key}; IndexError when getting batch start or end revisions for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
+                # log(f"{repo_key}; IndexError when getting batch start or end revisions for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}", "warning")
                 #  <class 'IndexError'>, ('list index out of range',), list index out of range
                 # Need to handle the issue where revisions seem to be out of order on the server
 
@@ -942,7 +989,7 @@ def clone_svn_repo(repo_key):
     except Exception as exception:
 
         # Log a warning if this fails, and run the fetch without the --revision arg
-        # logging.warning(f"{repo_key}; failed to get batch start or end revision for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}")
+        # log(f"{repo_key}; failed to get batch start or end revision for batch size {fetch_batch_size}; running the fetch without the batch size limit; exception: {type(exception)}, {exception.args}, {exception}", "warning")
 
         log(f"{repo_key}; failed to get batch start or end revision for batch size {fetch_batch_size}; skipping this run to retry next run; exception: {type(exception)}, {exception.args}, {exception}", "warning")
         return
@@ -959,7 +1006,10 @@ def clone_svn_repo(repo_key):
         cmd_git_set_batch_end_revision.append(str(batch_end_revision))
         subprocess_run(cmd_git_set_batch_end_revision)
 
-    clean_remote_branches(local_repo_path, cmd_git_garbage_collection)
+    # Run Git garbage collection before handing off to cleanup branches and tags
+    subprocess_run(cmd_git_garbage_collection)
+
+    cleanup_branches_and_tags(local_repo_path)
 
 
 def clone_tfs_repos():
@@ -978,107 +1028,166 @@ def clone_tfs_repos():
     #         tfs_repos_dict[repo_key] = repos_dict[repo_key]
 
 
-    # logging.info("Cloning TFS repos" + str(tfs_repos_dict))
+    # log(f"Cloning TFS repos: {str(tfs_repos_dict)}", "info")
 
 
 def clone_git_repos():
     log("Cloning Git repos function not implemented yet", "warning")
 
 
-def clean_remote_branches(local_repo_path, cmd_git_garbage_collection):
+def cleanup_branches_and_tags(local_repo_path):
 
     # Git svn and git tfs both create converted branches as remote branches, so the Sourcegraph clone doesn't show them to users
     # Need to convert the remote branches to local branches, so Sourcegraph users can see them
 
-    subprocess_run(cmd_git_garbage_collection)
+    packed_refs_file_path       = f"{local_repo_path}/.git/packed-refs"
 
-    # Edit .git/packed-refs
+    local_branch_prefix         = "refs/heads/"
+    local_tag_prefix            = "refs/tags/"
+    remote_branch_prefix        = "refs/remotes/origin/"
+    remote_tag_prefix           = "refs/remotes/origin/tags/"
 
-    # Find
-    #  refs/remotes/origin/tags/
-    # Replace with
-    #  refs/tags/
-    # sed -i.backup 's/\ refs\/remotes\/origin\/tags\//\ refs\/tags\//g' packed-refs
-
-    # Find
-    #  refs/remotes/origin/
-    # Replace with
-    #  refs/heads/
-    # sed -i.backup 's/\ refs\/remotes\/origin\//\ refs\/heads\//g' packed-refs
-
-    date_time                       = time.strftime("%Y-%m-%d-%H-%M-%S")
-    packed_refs_file_path           = f"{local_repo_path}/.git/packed-refs"
-    packed_refs_file_backup_path    = f"{packed_refs_file_path}-backup-{date_time}"
-
-    tag_exclusions = [
-        "@\d*$"
+    remote_branch_exclusions    = [
+        "@",
     ]
-
-    branch_exclusions = [
-        "/tags/",
-        "/trunk",
-        "@\d*$",
+    remote_tag_exclusions       = [
+        "@",
     ]
-
-    tag_prefix     = "refs/remotes/origin/tags/"
-    branch_prefix  = "refs/remotes/origin/"
-
-    # The .git/packed-refs file only exists if git gc found stuff to pack into it
-    if not os.path.exists(packed_refs_file_path):
-        logging.debug(f"No git packed-refs file to fix branches and tags, at {packed_refs_file_path}")
-        return
-
-    # Take a backup, so we can compare before and after
-    shutil.copy2(packed_refs_file_path, packed_refs_file_backup_path)
 
     # Read the file content as lines into a list
     with open(packed_refs_file_path, "r") as packed_refs_file:
-        packed_refs_file_content = packed_refs_file.read().splitlines()
+        input_lines = packed_refs_file.read().splitlines()
 
-    # Ensure the string replacements are done in the correct order
+    log(f"Starting content of {packed_refs_file_path}:", "warning")
 
-    # Tags first
-    # Not sure what in the git is happening here
-    # https://sourcegraph.com/github.com/cjwilburn/svn-migration-scripts/-/blob/src/main/scala/Tags.scala?L19
-    for packed_refs_file_content_line in packed_refs_file_content:
+    print(f"input_lines:")
+    print(input_lines)
 
-        logging.info(f"packed_refs_file_content_line: {packed_refs_file_content_line}")
+    output_list_of_strings_and_line_number_tuples = []
+    output_list_of_reversed_tuples = []
 
-        if tag_prefix in packed_refs_file_content_line:
+    for i in range(len(input_lines)):
 
-            logging.info(f"tag_prefix in packed_refs_file_content_line: {tag_prefix} in {packed_refs_file_content_line}")
+        print()
+        print()
 
-            if not any(re.search(tag_exclusion, packed_refs_file_content_line) for tag_exclusion in tag_exclusions):
+        try :
 
-                logging.info(f"no tag_exclusions in line: {packed_refs_file_content_line}")
-                new_line = packed_refs_file_content_line.replace(tag_prefix, "")
-                new_tag_ref  = new_line.split(" ")[0]
-                new_tag_name = new_line.split(" ")[1]
-                logging.info(f"new_tag_name: {new_tag_name}, new_tag_ref: {new_tag_ref}")
+            hash, path = input_lines[i].split(" ")
 
-#                git tag new_tag_name
+        except ValueError:
 
-    # Branches second
-    # https://sourcegraph.com/github.com/cjwilburn/svn-migration-scripts/-/blob/src/main/scala/Branches.scala?L40
-    for packed_refs_file_content_line in packed_refs_file_content:
+            print(f"input_lines[i].split(' ') failed on line {i}, assuming it's a string, adding it back")
+            print(input_lines[i])
 
-        logging.info(f"packed_refs_file_content_line: {packed_refs_file_content_line}")
+            output_list_of_strings_and_line_number_tuples.append([str(input_lines[i]), i])
 
-        if branch_prefix in packed_refs_file_content_line:
+            continue
 
-            logging.info(f"branch_prefix in packed_refs_file_content_line: {branch_prefix} in {packed_refs_file_content_line}")
+        except Exception as exception:
 
-            if not any(re.search(branch_exclusion, packed_refs_file_content_line) for branch_exclusion in branch_exclusions):
+            log(f"Exception while cleaning branches and tags: {exception}", "error")
+            continue
 
-                logging.info(f"no branch_exclusions in line: {packed_refs_file_content_line}")
-                new_line = packed_refs_file_content_line.replace(branch_prefix, "")
-                new_branch_ref  = new_line.split(" ")[0]
-                new_branch_name = new_line.split(" ")[1]
-                logging.info(f"new_branch_name: {new_branch_name}, new_branch_ref: {new_branch_ref}")
+        print(f"hash, path = input_lines[i].split(" ")")
+        print(f"hash: {hash}")
+        print(f"path: {path}")
 
-                # git branch new_branch_name new_branch_ref
-                cmd_git_branch = ["git", "-C", local_repo_path, "branch", "-f", new_branch_name, new_branch_ref]
-                subprocess_run(cmd_git_branch)
+        # If the path is a local tag, then delete it
+        if path.startswith(local_tag_prefix):
+            print(f"local tag: {path}, deleting")
+            continue
+
+        # If the path is a local branch, then delete it
+        if path.startswith(local_branch_prefix):
+            print(f"local branch: {path}, deleting")
+            continue
+
+        # If the path is a remote tag, then copy it to a local path
+        elif path.startswith(remote_tag_prefix):
+
+            print(f"remote tag: {path}, adding it back as is")
+            output_list_of_reversed_tuples.append(tuple([path,hash]))
+
+            # Filter out the junk
+            # If none of the exclusions are in this path, then use it
+            filter=(exclusion in path for exclusion in remote_tag_exclusions)
+            if not any(filter):
+
+                print(f"remote tag: {path}, no exclusions, copying hash to local tag")
+                new_path = path.replace(remote_tag_prefix, local_tag_prefix)
+                output_list_of_reversed_tuples.append(tuple([new_path,hash]))
+
+            else:
+                print(f"remote tag: {path}, contains exclusions, not copying")
+
+        # If the path is a remote branch, then copy it to a local path
+        elif path.startswith(remote_branch_prefix):
+
+            print(f"remote branch: {path}, adding it back as is")
+            output_list_of_reversed_tuples.append(tuple([path,hash]))
+
+            # Filter out the junk
+            # If none of the exclusions are in this path, then use it
+            filter=(exclusion in path for exclusion in remote_branch_exclusions)
+            if not any(filter):
+
+                print(f"remote branch: {path}, no exclusions, copying hash to local branch")
+                new_path = path.replace(remote_branch_prefix, local_branch_prefix)
+                output_list_of_reversed_tuples.append(tuple([new_path,hash]))
+
+            else:
+                print(f"remote branch: {path}, contains exclusions, not copying")
+
+        elif path == "refs/remotes/git-svn":
+
+            print(f"remote branch: {path}, adding it back as is")
+            output_list_of_reversed_tuples.append(tuple([path,hash]))
+
+            print(f"remote branch: {path}, copying hash to local default branch")
+
+            default_branch = "refs/heads/bloop"
+
+            with open(f"{local_repo_path}/.git/HEAD", "r") as head_file:
+                default_branch = head_file.read().splitlines()[0].split(" ")[1]
+
+            output_list_of_reversed_tuples.append(tuple([default_branch,hash]))
+
+        else:
+
+            log(f"Error while cleaning branches and tags, not sure how to handle line {input_lines[i]} in {packed_refs_file_path}", "error")
+            output_list_of_strings_and_line_number_tuples.append([str(input_lines[i]), i])
+
+    # Sort by the path in the tuple
+    output_list_of_reversed_tuples.sort()
+
+    # Reverse the tuple pairs back to "hash path"
+    # Convert the tuples back to strings
+    output_list_of_strings = [f"{hash} {path}" for path, hash in output_list_of_reversed_tuples]
+
+    # Re-insert the strings that failed to split, back in their original line number
+    for string, line_number in output_list_of_strings_and_line_number_tuples:
+        output_list_of_strings.insert(line_number, string)
+
+    print()
+    print()
+    print(f"input_lines:")
+    for line in input_lines:
+        print(line)
+    print()
+    print()
+    print(f"output_list_of_strings:")
+    for line in output_list_of_strings:
+        print(line)
+    print()
+    print()
+
+    # Write the content back to the file
+    with open(packed_refs_file_path, "w") as packed_refs_file:
+        for line in output_list_of_strings:
+            packed_refs_file.write(f"{line}\n")
+
+    log(f"Finished {packed_refs_file_path}:", "warning")
 
 
 def subprocess_run(args, password=None, echo_password=None, quiet=False):
@@ -1153,7 +1262,7 @@ def subprocess_run(args, password=None, echo_password=None, quiet=False):
             # Change the log_level to debug so the failed process doesn't log an error in print_process_status()
             log_level = "debug"
 
-    print_process_status(process_dict, status_message, truncated_subprocess_output_to_log, log_level)
+    print_process_status(process_dict, status_message, str(truncated_subprocess_output_to_log), log_level)
 
     return return_dict
 
@@ -1185,9 +1294,10 @@ def check_lock_files(args, process_dict):
     return_value                = False
     repo_path                   = args[2] # [ "git", "-C", local_repo_path, "gc" ]
     list_of_process_and_lock_file_path_tuples = [
-        ("Git garbage collection"   , ".git/gc.pid"                             ), # fatal: gc is already running on machine '75c377aedbaf' pid 3700 (use --force if not)
-        ("SVN config"               , ".git/svn/.metadata.lock"                 ), # error: could not lock config file .git/svn/.metadata: File exists config svn-remote.svn.branches-maxRev 125551: command returned error: 255
-        ("SVN fetch"                , ".git/svn/refs/remotes/git-svn/index.lock"), # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/wsl/zest/.git/svn/refs/remotes/git-svn/index.lock': File exists.
+        ("Git garbage collection"       , ".git/gc.pid"                                     ), # fatal: gc is already running on machine '75c377aedbaf' pid 3700 (use --force if not)
+        ("svn config"                   , ".git/svn/.metadata.lock"                         ), # error: could not lock config file .git/svn/.metadata: File exists config svn-remote.svn.branches-maxRev 125551: command returned error: 255
+        ("git svn fetch git-svn"        , ".git/svn/refs/remotes/git-svn/index.lock"        ), # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/asf/xmlbeans/.git/svn/refs/remotes/git-svn/index.lock': File exists.
+        ("git svn fetch origin trunk"   , ".git/svn/refs/remotes/origin/trunk/index.lock"   ), # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/asf/xmlbeans/.git/svn/refs/remotes/origin/trunk/index.lock': File exists
     ]
 
     process_command = " ".join(process_dict["cmdline"])
