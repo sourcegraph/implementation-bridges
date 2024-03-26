@@ -1053,8 +1053,17 @@ def cleanup_branches_and_tags(local_repo_path, cmd_git_default_branch, git_defau
             continue
 
         # If the path is a local branch, then delete it
-        if path.startswith(local_branch_prefix):
+        elif path.startswith(local_branch_prefix):
             continue
+
+        # If the path is the default branch, then delete it, it'll get recreated later
+        elif path == git_default_branch:
+            continue
+
+        # If the path is the git-svn's default remote branch, then keep it as is
+        elif path == "refs/remotes/git-svn":
+
+            output_list_of_reversed_tuples.append(tuple([path,hash]))
 
         # If the path is a remote tag, then copy it to a local path
         elif path.startswith(remote_tag_prefix):
@@ -1081,11 +1090,6 @@ def cleanup_branches_and_tags(local_repo_path, cmd_git_default_branch, git_defau
 
                 new_path = path.replace(remote_branch_prefix, local_branch_prefix)
                 output_list_of_reversed_tuples.append(tuple([new_path,hash]))
-
-        elif path == "refs/remotes/git-svn":
-
-            output_list_of_reversed_tuples.append(tuple([path,hash]))
-            output_list_of_reversed_tuples.append(tuple([git_default_branch,hash]))
 
         else:
 
