@@ -4,41 +4,16 @@
 ### TODO:
 
     # Definition of Done:
-        # Git - Done enough for PoC, running as a cronjob on the customer's Linux VM
-        # SVN - Need to sort out branches
-        # TFVC - Need to sort out branches
-
-    # SVN
-
-        # Branches
-
-            #  git symbolic-ref HEAD refs/heads/trunk
-
-            # Edit .git/packed-refs
+        # Git - Done enough for PoC
+        # SVN - Done
+        # TFVC - Need to sort out branches, and how to finish cloning
 
     # TFVC
-
         # Convert tfs-to-git Bash script to Python and add it here
+        # Test tfs-to-git with username and password authentication for the self hosted TFVC repo to see if it works with read only permissions
+        # Branches and tags
 
-    # Git
-
-        # SSH clone
-            # Move git SSH clone from outside bash script into this script
-            # See if the GitPython module fetches the repo successfully, or has a way to clone multiple branches
-
-            # From the git remote --help
-                # Imitate git clone but track only selected branches
-                #     mkdir project.git
-                #     cd project.git
-                #     git init
-                #     git remote add -f -t master -m master origin git://example.com/git.git/
-                #     git merge origin
-
-    # Other
-
-        # Parallelism
-            # Add a max concurrent repos environment variable
-
+    # SVN
         # SVN commands hanging
             # Add a timeout in run_subprocess() for hanging svn info and svn log commands, if data isn't transferring
 
@@ -51,26 +26,61 @@
 
         # Run git svn log --xml to store the repo's log on disk, then append to it when there are new revisions, so getting counts of revisions in each repo is slow once, fast many times
 
+    # Git
+        # SSH clone
+            # Move git SSH clone from outside bash script into this script
+            # See if the GitPython module fetches the repo successfully, or has a way to clone multiple branches
+                # Fetch (just the default branch)
+                # Fetch all branches
+                # Clone all branches
+
+            # From the git remote --help
+                # Imitate git clone but track only selected branches
+                #     mkdir project.git
+                #     cd project.git
+                #     git init
+                #     git remote add -f -t master -m master origin git://example.com/git.git/
+                #     git merge origin
+
     # Other
 
         # Read environment variables from repos-to-convert.yaml, so the values can be changed without restarting the container
+
+        # Parallelism
+            # Add a max concurrent repos environment variable
+
+        # Add a fetch-interval-seconds config to repos-to-convert.yaml file
+            # convert_svn_repos loop
+                # Try and read it
+                        # next_fetch_time = repo_key.get(next-fetch-time, None)
+                # If it's defined and in the future, skip this run
+                    # if next_fetch_time
+                        # if next_fetch_time >= time.now()
+                            # Log.debug(repo_key next fetch time is: yyyy-mm-dd HH:MM:SS, skipping)
+                            # continue
+                        # Else
+                            # Log.debug(repo_key next fetch time was: yyyy-mm-dd HH:MM:SS, fetching
+                # Doing this before forking the process reduces zombies and debug process log noise
+            # convert_svn_repo
+                # Set the next fetch time to None, so the forking loop doesn't fork again for this repo fetch interval
+                    # repo_key[next-fetch-time] = None
+                # Check if this repo has a fetch interval defined
+                    # fetch_interval_seconds = repo_key.get(fetch-interval-seconds, None)
+                    # If yes, calculate and store the next fetch time
+                    # If fetch_interval_seconds
+                        # repo_key[next-fetch-time] = fetch_interval_seconds + time.now()
+
+        # Add to the process status check and cleanup function to
+            # get the last lines of stdout from a running process,
+            # instead of just wait with a timeout of 0.1,
+            # use communicate() with a timeout and read the stdout from the return value,
+            # catch the timeout exception
+            # May require tracking process objects in a dict, which would prevent processes from getting auto-cleaned, resulting in higher zombie numbers
 
 ### Notes:
 
     # psutil requires adding gcc to the Docker image build, which adds 4 minutes to the build time, and doubles the image size
     # It would be handy if there was a workaround without it, but multiprocessing.active_children() doesn't join the intermediate processes that Python forks
-
-    # Atlassian's SVN to Git migration guide
-        # https://www.atlassian.com/git/tutorials/migrating-convert
-        # Java script repo
-        # https://marc-dev.sourcegraphcloud.com/bitbucket.org/atlassian/svn-migration-scripts/-/blob/src/main/scala/Authors.scala
-        # Especially the Clean the new Git repository, to convert branches and tags
-            # clean-git
-            # java -Dfile.encoding=utf-8 -jar /sourcegraph/svn-migration-scripts.jar clean-git
-            # Initial output looked good
-            # Required a working copy
-            # Didn't work
-            # Corrupted repo
 
     # authors file
         # java -jar /sourcegraph/svn-migration-scripts.jar authors https://svn.apache.org/repos/asf/eagle > authors.txt
@@ -78,10 +88,6 @@
 
     # git list all config
         # git -C $local_repo_path config --list
-
-    # Find a python library for working with git repos programmatically instead of depending on git CLI
-    # https://gitpython.readthedocs.io/en/stable/tutorial.html
-        # Couple CVEs: https://nvd.nist.gov/vuln/search/results?query=gitpython
 
     # Decent example of converting commit messages
     # https://github.com/seantis/git-svn-trac/blob/master/git-svn-trac.py
@@ -808,8 +814,9 @@ def clone_svn_repo(repo_key):
 
             log(f"{repo_key}; up to date, skipping; local rev {previous_batch_end_revision}, remote rev {last_changed_rev}", "info")
 
-            # subprocess_run(cmd_git_garbage_collection)
-            # cleanup_branches_and_tags(local_repo_path)
+            # Run git garbage collection and cleanup branches, even if repo is already up to date
+            subprocess_run(cmd_git_garbage_collection)
+            cleanup_branches_and_tags(local_repo_path, cmd_git_default_branch, git_default_branch)
 
             return
 
@@ -829,9 +836,6 @@ def clone_svn_repo(repo_key):
         # Create the repo path if it doesn't exist
         if not os.path.exists(local_repo_path):
             os.makedirs(local_repo_path)
-
-        # # Set the default branch before init
-        # subprocess_run(cmd_git_default_branch)
 
         if layout:
             cmd_git_svn_init   += ["--stdlayout"]
@@ -869,11 +873,12 @@ def clone_svn_repo(repo_key):
         cmd_git_set_batch_end_revision.append(str(0))
         subprocess_run(cmd_git_set_batch_end_revision)
 
-        # Set the default branch local to this repo, after init
-        subprocess_run(cmd_git_default_branch)
 
     ## Back to steps we do for both Create and Update states, so users can update the below parameters without having to restart the clone from scratch
     # TODO: Check if these configs are already set the same before trying to set them
+
+    # Set the default branch local to this repo, after init
+    subprocess_run(cmd_git_default_branch)
 
     # Configure the authors file, if provided
     if authors_file_path:
@@ -974,7 +979,7 @@ def clone_svn_repo(repo_key):
     # Run Git garbage collection before handing off to cleanup branches and tags
     subprocess_run(cmd_git_garbage_collection)
 
-    cleanup_branches_and_tags(local_repo_path)
+    cleanup_branches_and_tags(local_repo_path, cmd_git_default_branch, git_default_branch)
 
 
 def clone_tfs_repos():
@@ -1000,7 +1005,7 @@ def clone_git_repos():
     log("Cloning Git repos function not implemented yet", "warning")
 
 
-def cleanup_branches_and_tags(local_repo_path):
+def cleanup_branches_and_tags(local_repo_path, cmd_git_default_branch, git_default_branch):
 
     # Git svn and git tfs both create converted branches as remote branches, so the Sourcegraph clone doesn't show them to users
     # Need to convert the remote branches to local branches, so Sourcegraph users can see them
@@ -1048,7 +1053,21 @@ def cleanup_branches_and_tags(local_repo_path):
             continue
 
         # If the path is a local branch, then delete it
-        if path.startswith(local_branch_prefix):
+        elif path.startswith(local_branch_prefix):
+            continue
+
+        # If the path is the git-svn's default remote branch, then keep it as is, and add a new default local branch
+        elif path == "refs/remotes/git-svn":
+
+            output_list_of_reversed_tuples.append(tuple([path,hash]))
+            output_list_of_reversed_tuples.append(tuple([f"{local_branch_prefix}{git_default_branch}",hash]))
+
+        # If the path is the default branch, then delete it, it'll get recreated later
+        elif path == f"{local_branch_prefix}{git_default_branch}":
+            continue
+
+        # If the path is the incorrectly formatted default branch, then delete it
+        elif path == f"{local_branch_prefix}/{git_default_branch}":
             continue
 
         # If the path is a remote tag, then copy it to a local path
@@ -1077,16 +1096,6 @@ def cleanup_branches_and_tags(local_repo_path):
                 new_path = path.replace(remote_branch_prefix, local_branch_prefix)
                 output_list_of_reversed_tuples.append(tuple([new_path,hash]))
 
-        elif path == "refs/remotes/git-svn":
-
-            output_list_of_reversed_tuples.append(tuple([path,hash]))
-            default_branch = "refs/heads/bloop"
-
-            with open(f"{local_repo_path}/.git/HEAD", "r") as head_file:
-                default_branch = head_file.read().splitlines()[0].split(" ")[1]
-
-            output_list_of_reversed_tuples.append(tuple([default_branch,hash]))
-
         else:
 
             log(f"Error while cleaning branches and tags, not sure how to handle line {input_lines[i]} in {packed_refs_file_path}", "error")
@@ -1107,6 +1116,9 @@ def cleanup_branches_and_tags(local_repo_path):
     with open(packed_refs_file_path, "w") as packed_refs_file:
         for line in output_list_of_strings:
             packed_refs_file.write(f"{line}\n")
+
+    # Reset the default branch
+    subprocess_run(cmd_git_default_branch)
 
 
 def subprocess_run(args, password=None, echo_password=None, quiet=False):
@@ -1219,7 +1231,12 @@ def check_lock_files(args, process_dict):
         ("git svn fetch origin trunk"   , ".git/svn/refs/remotes/origin/trunk/index.lock"   ), # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/asf/xmlbeans/.git/svn/refs/remotes/origin/trunk/index.lock': File exists
     ]
 
-    process_command = " ".join(process_dict["cmdline"])
+    # TypeError: can only join an iterable
+    try:
+        process_command = " ".join(process_dict["cmdline"])
+    except TypeError as exception:
+        process_command = process_dict["cmdline"]
+
     pid             = process_dict["pid"]
 
     for lock_file in list_of_process_and_lock_file_path_tuples:
