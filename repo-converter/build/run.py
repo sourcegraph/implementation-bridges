@@ -1231,7 +1231,12 @@ def check_lock_files(args, process_dict):
         ("git svn fetch origin trunk"   , ".git/svn/refs/remotes/origin/trunk/index.lock"   ), # fatal: Unable to create '/sourcegraph/src-serve-root/svn.apache.org/asf/xmlbeans/.git/svn/refs/remotes/origin/trunk/index.lock': File exists
     ]
 
-    process_command = " ".join(process_dict["cmdline"])
+    # TypeError: can only join an iterable
+    try:
+        process_command = " ".join(process_dict["cmdline"])
+    except TypeError as exception:
+        process_command = process_dict["cmdline"]
+
     pid             = process_dict["pid"]
 
     for lock_file in list_of_process_and_lock_file_path_tuples:
