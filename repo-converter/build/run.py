@@ -1066,6 +1066,10 @@ def cleanup_branches_and_tags(local_repo_path, cmd_git_default_branch, git_defau
         elif path == f"{local_branch_prefix}{git_default_branch}":
             continue
 
+        # If the path is the incorrectly formatted default branch, then delete it
+        elif path == f"{local_branch_prefix}/{git_default_branch}":
+            continue
+
         # If the path is a remote tag, then copy it to a local path
         elif path.startswith(remote_tag_prefix):
 
