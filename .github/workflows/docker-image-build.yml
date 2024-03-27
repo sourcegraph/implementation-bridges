@@ -27,9 +27,6 @@ jobs:
             type=ref,event=tag,priority=2000
             type=ref,event=pr,priority=1900
             type=ref,event=branch,priority=1800
-            type=raw,value=insiders
-            type=raw,value=insiders-{{date 'YYYY-MM-DD-HH-mm-ss'}}
-            type=sha
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
