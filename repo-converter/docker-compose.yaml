@@ -9,12 +9,12 @@ services:
 
   repo-converter:
     container_name: repo-converter
-    image: ghcr.io/sourcegraph/implementation-bridge-repo-converter:main
+    image: ghcr.io/sourcegraph/implementation-bridge-repo-converter:latest
     volumes:
       - ../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
       - ../config/toprc:/root/.config/procps/toprc
       - ../src-serve-root/:/sourcegraph/src-serve-root
     restart: always
     environment:
-      - REPO_CONVERTER_INTERVAL_SECONDS=60
-      - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO if unspecified
+      - REPO_CONVERTER_INTERVAL_SECONDS=900
+      # - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO if unspecified
