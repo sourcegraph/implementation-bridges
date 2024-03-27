@@ -9,7 +9,7 @@ services:
 
   repo-converter:
     container_name: repo-converter
-    image: ghcr.io/sourcegraph/implementation-bridge-repo-converter:latest
+    image: ghcr.io/sourcegraph/implementation-bridge-repo-converter:latest@sha256:805a33589b977fd07e29887d9346a973b3e214d444dc739be09ebb47740b7f72
     volumes:
       - ../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
       - ../config/toprc:/root/.config/procps/toprc
