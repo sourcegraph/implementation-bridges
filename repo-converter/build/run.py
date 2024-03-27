@@ -3,10 +3,11 @@
 
 ### TODO:
 
-    # Definition of Done:
-        # Git - Done enough for PoC
-        # SVN - Done
-        # TFVC - Need to sort out branches, and how to finish cloning
+    # Add doc strings for each function?
+        # https://www.dataquest.io/blog/documenting-in-python-with-docstrings
+
+    # Rewrite in Go?
+    # Rewrite in object oriented fashion?
 
     # TFVC
         # Convert tfs-to-git Bash script to Python and add it here

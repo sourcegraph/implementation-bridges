@@ -3,7 +3,7 @@ name: Cleanup old Docker Images from GitHub Container Registry
 on:
   workflow_dispatch: # Creates button in web UI to run the workflow manually, shouldn't be needed
   schedule:
-    - cron: '0 0 * * *' # Run at 00:00 UTC every day
+    - cron: '0 0 * * 0' # Run on Sundays at 00:00 UTC every week
 
 jobs:
   cleanup:
@@ -14,5 +14,5 @@ jobs:
         with:
           package-name: implementation-bridge-repo-converter
           package-type: container
-          min-versions-to-keep: 10
+          delete-only-untagged-versions: 'true'
           ignore-versions: '^v\d+\.\d+\.\d+$'
