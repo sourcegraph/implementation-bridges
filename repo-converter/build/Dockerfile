@@ -1,11 +1,11 @@
-# syntax=docker/dockerfile:1
+# syntax=docker/dockerfile:1@sha256:fe40cf4e92cd0c467be2cfc30657a680ae2398318afd50b0c80585784c604f28
 # Using version:1 means always getting the latest version of dockerfile syntax within major version 1
 # https://docs.docker.com/build/dockerfile/frontend/#stable-channel
 # version:1 is still the most popular version
 # https://sourcegraph.com/search?q=context:global+%23+syntax%3Ddocker/dockerfile:(.*)&patternType=regexp&sm=0&expanded=&groupBy=group
 
 # Using Ubuntu LTS
-FROM ubuntu:22.04 as base
+FROM ubuntu:22.04@sha256:340d9b015b194dc6e2a13938944e0d016e57b9679963fdeb9ce021daac430221 as base
 
 # Avoid stuck build due to user prompt
 ARG DEBIAN_FRONTEND=noninteractive
