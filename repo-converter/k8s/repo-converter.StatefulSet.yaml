@@ -23,7 +23,8 @@ spec:
     spec:
       containers:
       - name: repo-converter
-        image: ghcr.io/sourcegraph/implementation-bridge-repo-converter:main
+        # command: ["sh", "-c", "sleep 10000"]
+        image: ghcr.io/sourcegraph/implementation-bridge-repo-converter:v0.0.9
         env:
         - name: SRC_SERVE_ROOT
           value: "/data/repos"
@@ -38,14 +39,14 @@ spec:
           mountPath: /data
         - name: repos-to-convert
           mountPath: /data/repos/repos-to-convert.yaml
-          # subPath: repos-to-convert.yaml
+          subPath: repos-to-convert.yaml
           readOnly: true
-        - name: toprc
-          mountPath: /root/.config/procps/toprc
-          subPath: toprc
+        # - name: toprc
+        #   mountPath: /root/.config/procps/toprc
+        #   subPath: toprc
       - name: src-serve-git
         image:  index.docker.io/sourcegraph/src-cli:latest
-        command: ["serve-git", "-addr", ":443", "/data/repos"]
+        command: ["src", "serve-git", "-addr", ":443", "/data/repos"]
         ports:
         - containerPort: 443
         volumeMounts:
@@ -55,9 +56,11 @@ spec:
       - name: repos-to-convert
         secret:
           secretName: repos-to-convert-secret
-      - name: toprc
-        configMap:
-          name: toprc-config
+      # - name: toprc
+      #   configMap:
+      #     name: toprc-config
+      # - name: data
+      #   emptyDir: {} 
   volumeClaimTemplates:
   - metadata:
       labels:
