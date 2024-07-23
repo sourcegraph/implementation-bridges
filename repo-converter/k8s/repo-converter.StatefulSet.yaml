@@ -46,9 +46,9 @@ spec:
         #   subPath: toprc
       - name: src-serve-git
         image:  index.docker.io/sourcegraph/src-cli:latest
-        command: ["src", "serve-git", "-addr", ":443", "/data/repos"]
+        command: ["src", "serve-git", "-addr", ":3434", "/data/repos"]
         ports:
-        - containerPort: 443
+        - containerPort: 3434
         volumeMounts:
         - name: data
           mountPath: /data
