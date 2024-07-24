@@ -10,9 +10,9 @@ metadata:
     deploy: sourcegraph
   name: repo-converter
 spec:
+  clusterIP: None
   ports:
    - port: 3434
      targetPort: 3434
   selector:
     app: repo-converter
-  type: "ClusterIP"
