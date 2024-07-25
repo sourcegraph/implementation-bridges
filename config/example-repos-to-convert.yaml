@@ -1,8 +1,17 @@
 xmlbeans:
-  type:               SVN
-  svn-repo-code-root: https://svn.apache.org/repos/asf/xmlbeans
-  code-host-name:     svn.apache.org
-  git-org-name:       asf
-  layout:             standard
-  username:           super_secret_username
-  password:           super_secret_password
+  type:                 SVN
+  svn-repo-code-root:   https://svn.apache.org/repos/asf/xmlbeans
+  code-host-name:       svn.apache.org
+  git-org-name:         asf
+  username:             super_secret_username
+  password:             super_secret_password
+  fetch-batch-size:     100
+  git-default-branch:   main
+  layout:               standard
+  trunk:                trunk
+  branches:             branches
+  tags:                 tags
+  git-ignore-file-path: /path/mounted/inside/container/to/.gitignore
+  authors-file-path:    /path/mounted/inside/container/to/authors-file-path
+  authors-prog-path:    /path/mounted/inside/container/to/authors-prog-path
+  bare-clone:           true
