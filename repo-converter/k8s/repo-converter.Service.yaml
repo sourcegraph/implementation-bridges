@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    description: Headless service that provides a stable network identity for the
+      repo-converter stateful set.
+  labels:
+    app.kubernetes.io/component: repo-converter
+    app: repo-converter
+    deploy: sourcegraph
+  name: repo-converter
+spec:
+  clusterIP: None
+  ports:
+   - port: 3434
+     targetPort: 3434
+  selector:
+    app: repo-converter

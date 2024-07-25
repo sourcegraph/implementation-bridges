@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  annotations:
+    description: service for svn to git conversion.
+  labels:
+    app.kubernetes.io/component: repo-converter
+    app: repo-converter
+    deploy: sourcegraph
+  name: repo-converter
+spec:
+  serviceName: "repo-converter"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: repo-converter
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: repo-converter
+        app: repo-converter
+        deploy: sourcegraph
+    spec:
+      containers:
+      - name: repo-converter
+        image: ghcr.io/sourcegraph/implementation-bridge-repo-converter:v0.0.9
+        env:
+        - name: SRC_SERVE_ROOT
+          value: "/data/repos"
+        - name: REPOS_TO_CONVERT
+          value: "/data/repos/repos-to-convert.yaml"
+        # - name: REPO_CONVERTER_INTERVAL_SECONDS
+        #   value: "60"
+        # - name: LOG_LEVEL
+        #   value: "DEBUG" # DEBUG INFO WARNING ERROR CRITICAL
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: repos-to-convert
+          mountPath: /data/repos/repos-to-convert.yaml
+          subPath: repos-to-convert.yaml
+          readOnly: true
+      - name: src-serve-git
+        image:  index.docker.io/sourcegraph/src-cli:latest
+        command: ["src", "serve-git", "-addr", ":3434", "/data/repos"]
+        ports:
+        - containerPort: 3434
+        volumeMounts:
+        - name: data
+          mountPath: /data
+      volumes:
+      - name: repos-to-convert
+        secret:
+          secretName: repos-to-convert-secret
+  volumeClaimTemplates:
+  - metadata:
+      labels:
+        app.kubernetes.io/component: repo-converter
+        app: repo-converter
+        deploy: sourcegraph
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi  # Adjust size as needed
