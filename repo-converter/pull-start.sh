@@ -14,6 +14,7 @@ log_file="$repo_converter_dir/pull-start.log"
 git_cmd="git -C $repo_converter_dir"
 docker_compose_file_path="$repo_converter_dir/docker-compose.yaml"
 docker_cmd="docker compose -f $docker_compose_file_path"
+docker_up_sleep_seconds=10
 
 # Log to both stdout and log file
 exec > >(tee -a "$log_file") 2>&1
@@ -34,7 +35,15 @@ command="\
     $docker_cmd up -d --remove-orphans      \
     "
 
-log "Running command in subshell: $command"
+log "Running command in subshell:"
+echo "$command" | awk 'BEGIN{FS="&&"; OFS="&& \n"} {$1=$1} 1'
+
 bash -c "$command" >> "$log_file" 2>&1
+
+log "Sleeping $docker_up_sleep_seconds seconds to give Docker containers time to start and stabilize"
+sleep $docker_up_sleep_seconds
+
+log "docker ps:"
+$docker_cmd ps
 
 log "Script finishing"
