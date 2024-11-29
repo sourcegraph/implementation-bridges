@@ -24,6 +24,8 @@ function log() {
 }
 
 log "Script starting"
+log "Running as user: $USER"
+log "On branch: $($git_cmd branch -v)"
 
 command="\
     $git_cmd reset --hard                && \
