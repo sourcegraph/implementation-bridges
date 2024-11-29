@@ -23,10 +23,10 @@ function log() {
 log "Script starting"
 
 command="\
-    sudo git -C $repo_converter_dir reset --hard                                            && \
-    sudo git -C $repo_converter_dir pull --force                                            && \
-    sudo docker compose -f $repo_converter_dir/docker-compose.yaml pull                     && \
-    sudo docker compose -f $repo_converter_dir/docker-compose.yaml up -d --remove-orphans      \
+    git -C $repo_converter_dir reset --hard                                            && \
+    git -C $repo_converter_dir pull --force                                            && \
+    docker compose -f $repo_converter_dir/docker-compose.yaml pull                     && \
+    docker compose -f $repo_converter_dir/docker-compose.yaml up -d --remove-orphans      \
     "
 
 log "Running command in subshell: $command"
