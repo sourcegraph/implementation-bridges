@@ -11,6 +11,9 @@
 sg_root_dir="/sourcegraph"
 repo_converter_dir="$sg_root_dir/implementation-bridges/repo-converter"
 log_file="$repo_converter_dir/pull-start.log"
+git_cmd="git -C $repo_converter_dir"
+docker_compose_file_path="$repo_converter_dir/docker-compose.yaml"
+docker_cmd="docker compose -f $docker_compose_file_path"
 
 # Log to both stdout and log file
 exec > >(tee -a "$log_file") 2>&1
@@ -23,10 +26,10 @@ function log() {
 log "Script starting"
 
 command="\
-    git -C $repo_converter_dir reset --hard                                            && \
-    git -C $repo_converter_dir pull --force                                            && \
-    docker compose -f $repo_converter_dir/docker-compose.yaml pull                     && \
-    docker compose -f $repo_converter_dir/docker-compose.yaml up -d --remove-orphans      \
+    $git_cmd reset --hard                && \
+    $git_cmd pull --force                && \
+    $docker_cmd pull                     && \
+    $docker_cmd up -d --remove-orphans      \
     "
 
 log "Running command in subshell: $command"
