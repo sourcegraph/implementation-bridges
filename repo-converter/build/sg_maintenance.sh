@@ -45,7 +45,9 @@
 # -u Exit if a variable is referenced before assigned
 # -x Print out commands before they are executed
 # -o pipefail Include non-zero exit codes, even if a command piped into another command fails
-set -euxo pipefail
+# -o pipefail seems to cause all piping to fail
+#set -euxo pipefail
+set -eux
 
 # Get the repo's root directory as the first parameter
 # Assumes this directory has a .git subdirectory
@@ -74,6 +76,7 @@ cd "$REPOSITORY_DIRECTORY"
 # Print the sizes of files in the repo's directory
 echo "Sizes in the repo's .git directory, before garbage collection:"
 du -sc .git/*
+start_size="$(du -s .git | awk '{print $1}')"
 
 # Track files to be cleaned up on exit
 declare -a files_to_cleanup
@@ -229,8 +232,11 @@ git pack-refs --all --prune
 # Continue the script if this command fails
 set +e
 # Try to get the git config values, if they exist
-git config get gc.reflogExpire
-git config get gc.reflogExpireUnreachable
+# If they don't exist, git config returns a non-zero exit code
+reflogExpire=$(git config get gc.reflogExpire)
+reflogExpireUnreachable=$(git config get gc.reflogExpireUnreachable)
+echo "gc.reflogExpire: $reflogExpire"
+echo "gc.reflogExpireUnreachable: $reflogExpireUnreachable"
 # Revert back to the previous Bash options
 set -e
 #
@@ -290,7 +296,7 @@ git repack -d -A --unpack-unreachable=now --write-bitmap-index -l --window-memor
 git commit-graph write --reachable --changed-paths --progress
 
 # Reset Bash option for pipefail, because it seems to break piping git | head
-set +o pipefail
+# set +o pipefail
 
 # Test if the repo is corrupted
 git show HEAD     | head -n 1
@@ -301,4 +307,13 @@ git log --all     | head -n 1
 # Print the sizes of files in the repo's directory
 echo "Sizes in the repo's .git directory, after garbage collection:"
 du -sc .git/*
+
+# Subtract 4 KB for the lock files which haven't been removed yet
+end_size="$(du -s .git | awk '{print $1}')"
+end_size="$((end_size - 4))"
+
+echo "Repo $REPOSITORY_DIRECTORY"
+echo "Size before garbage collection: $start_size KB"
+echo "Size after garbage collection: $end_size KB"
+echo "Storage saved: $((start_size - end_size)) KB"
 ###############################################################################
