@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# Usage: ./sg_maintenance.sh REPOSITORY_ROOT_DIRECTORY [GIT_REPACK_WINDOW_MEMORY]
+# Usage: ./sg_maintenance.sh /repos/perforce/repo 10g
+# Usage: ./sg_maintenance.sh /repos/github/repo 100m
+
 ###############################################################################
 # WARNING
 # This script was created for Sourcegraph Implementation Engineering deployments
@@ -40,24 +44,36 @@
 # -e Exit if there are any errors
 # -u Exit if a variable is referenced before assigned
 # -x Print out commands before they are executed
-# -o pipefail Exit if a command piped into another command fails
+# -o pipefail Include non-zero exit codes, even if a command piped into another command fails
 set -euxo pipefail
 
-# Grab the repo's root folder as the first parameter
+# Get the repo's root directory as the first parameter
+# Assumes this directory has a .git subdirectory
 # Bash string manipulation to set the variable value as empty if no parameters are provided
-REPOSITORY_FOLDER="${1:-""}"
+REPOSITORY_DIRECTORY="${1:-""}"
 
-# If the directory doesn't exist
-if [ -z "${REPOSITORY_FOLDER}" ]; then
+# Get the git repack window memory as the second parameter
+# Bash string manipulation to default the variable value to 100m if second parameter isn't provided
+# git repack -d -A --unpack-unreachable=now --write-bitmap-index -l --window-memory 100m
+GIT_REPACK_WINDOW_MEMORY="${2:-"100m"}"
+
+# If the directory doesn't exist, or doesn't have a .git subdirectory, exit
+if [ ! -d "${REPOSITORY_DIRECTORY}" ] || [ ! -d "${REPOSITORY_DIRECTORY}/.git" ]; then
 
   # Print usage instructions and exit
-  echo "USAGE: $(basename "${BASH_SOURCE[0]}") [REPOSITORY_ROOT_FOLDER]"
+  echo "Usage: $(basename "${BASH_SOURCE[0]}") REPOSITORY_ROOT_DIRECTORY [GIT_REPACK_WINDOW_MEMORY]"
+  echo "Usage: REPOSITORY_ROOT_DIRECTORY (required) must have a .git subdirectory"
+  echo "Usage: GIT_REPACK_WINDOW_MEMORY (optional) should match the format of the git repack --window-memory arg, ex. 100m, 1g"
   exit 1
 
 fi
 
-# cd to the provided repo
-cd "$REPOSITORY_FOLDER"
+# cd to the provided repo directory
+cd "$REPOSITORY_DIRECTORY"
+
+# Print the sizes of files in the repo's directory
+echo "Sizes in the repo's .git directory, before garbage collection:"
+du -sc .git/*
 
 # Track files to be cleaned up on exit
 declare -a files_to_cleanup
@@ -208,11 +224,18 @@ git pack-refs --all --prune
 # or gc.reflogExpire and gc.reflogExpireUnreachable,
 # of 90 days and 30 days, respectively.
 #
+# We may want to print out the values of gc.reflogExpire and gc.reflogExpireUnreachable
+# to verify which values are being used
+# Continue the script if this command fails
+set +e
+# Try to get the git config values, if they exist
+git config get gc.reflogExpire
+git config get gc.reflogExpireUnreachable
+# Revert back to the previous Bash options
+set -e
+#
 # We are specifying --all, so this command processes the reflogs of all references,
 # i.e., all branches, tags, and HEAD
-#
-# Marc: We may want to print out the values of gc.reflogExpire and gc.reflogExpireUnreachable
-# to verify which values are being used
 ###############################################################################
 git reflog expire --all
 
@@ -243,19 +266,39 @@ git reflog expire --all
 # After packing, REMOVE REDUNDANT PACKS
 # And then, run git prune-packed, to remove REDUNDANT LOOSE OBJECT FILES
 # But, leave unreachable, loose, unpacked object files which are not redundant
+#
+# --window-memory should be adjustable depending on the customer's:
+#   - Memory available to gitserver
+#   - Size of repo
+#   - Patience
+#
+# Will need to test with --path-walk once it becomes available in https://github.com/gitgitgadget/git/pull/1813
 ###############################################################################
-git repack -d -A --unpack-unreachable=now --write-bitmap-index -l --window-memory 100m
+git repack -d -A --unpack-unreachable=now --write-bitmap-index -l --window-memory "$GIT_REPACK_WINDOW_MEMORY"
 
 # --reachable - Generate the new commit graph by walking commits starting at all refs
 # --changed-paths - Compute and write information about the paths changed, between a commit and its first parent
 # This operation can take a while on large repositories
 # It provides significant performance gains for getting history of a directory or a file with git log -- <path>
 ###############################################################################
-# sg_maintenance.sh customization
+# sg_maintenance.sh customizations
 # Added
 # --progress
 # to
 # git commit-graph write --reachable --changed-paths
 # --progress - Turn progress on explicitly, even if stderr is not connected to a terminal
-###############################################################################
 git commit-graph write --reachable --changed-paths --progress
+
+# Reset Bash option for pipefail, because it seems to break piping git | head
+set +o pipefail
+
+# Test if the repo is corrupted
+git show HEAD     | head -n 1
+git log           | head -n 1
+git ls-tree HEAD  | head -n 1
+git log --all     | head -n 1
+
+# Print the sizes of files in the repo's directory
+echo "Sizes in the repo's .git directory, after garbage collection:"
+du -sc .git/*
+###############################################################################
