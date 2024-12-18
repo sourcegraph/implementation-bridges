@@ -52,7 +52,7 @@ Provides a framework to convert non-Git repos into Git format, and in combinatio
     - Type: src serve-git
     - `"url": "http://src-serve-git-ubuntu.local:443",`
         - Match the src serve-git container's Docker container name and listening port number from the `docker-compose.yaml`
-8. The repo-converter will output the converted repos in the `src-serve-root` directory, where src serve-git will serve them from
+8. The repo-converter will output the converted repos in the `src-serve-root` directory, where src serve-git will serve them from
 
 ### Kubernetes
 Coming soon

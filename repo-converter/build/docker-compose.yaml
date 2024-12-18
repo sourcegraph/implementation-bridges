@@ -1,5 +1,3 @@
-version: '2.4'
-
 include:
   - path:
     - ../../config/docker-compose-common-services.yaml
@@ -16,7 +14,7 @@ services:
     volumes:
       - ../../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
       - ../../config/toprc:/root/.config/procps/toprc
-      - ../../src-serve-root/:/sourcegraph/src-serve-root
+      - ../../../repos/:/sourcegraph/src-serve-root
     environment:
       - REPO_CONVERTER_INTERVAL_SECONDS=60
       - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO
