@@ -14,7 +14,7 @@ services:
     volumes:
       - ../../config/repos-to-convert.yaml:/sourcegraph/repos-to-convert.yaml:ro
       - ../../config/toprc:/root/.config/procps/toprc
-      - ../../../repos/:/sourcegraph/src-serve-root
+      - ../../../sg/r/:/sourcegraph/src-serve-root
     environment:
       - REPO_CONVERTER_INTERVAL_SECONDS=60
       - LOG_LEVEL=DEBUG # DEBUG INFO WARNING ERROR CRITICAL # Default is INFO
