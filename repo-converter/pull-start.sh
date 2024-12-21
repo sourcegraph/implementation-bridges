@@ -41,8 +41,11 @@ exec > >(tee -a "$log_file") 2>&1
 
 log "Script starting"
 log "Running as user: $USER"
-log "On branch: $($git_cmd branch -v)"
+log "On branch before git pull: $($git_cmd branch -v)"
 log "Docker compose file: $docker_compose_file_path"
+
+log "docker ps before:"
+$docker_cmd ps
 
 command="\
     $git_cmd reset --hard                && \
@@ -58,10 +61,12 @@ echo "$command" | awk 'BEGIN{FS="&&"; OFS="&& \n"} {$1=$1} 1'
 # Run the command
 bash -c "$command" >> "$log_file" 2>&1
 
+log "On branch after git pull: $($git_cmd branch -v)"
+
 log "Sleeping $docker_up_sleep_seconds seconds to give Docker containers time to start and stabilize"
 sleep $docker_up_sleep_seconds
 
-log "docker ps:"
+log "docker ps after:"
 $docker_cmd ps
 
 log "Script finishing"
