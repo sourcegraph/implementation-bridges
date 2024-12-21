@@ -16,7 +16,7 @@ services:
     container_name: src-serve-git-ubuntu.local
     image:  index.docker.io/sourcegraph/src-cli:latest
     volumes:
-      - ../../repos/:/sourcegraph/src-serve-root:ro
+      - ../../../sg/r/:/sourcegraph/src-serve-root:ro
     command: "serve-git -addr :443 /sourcegraph/src-serve-root"
     restart: always
     networks:
